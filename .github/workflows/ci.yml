@@ -38,8 +38,5 @@ jobs:
           uv run ruff check .
 
       - name: Run tests (pytest)
-        env:
-          # if your code imports keys, set safe defaults for CI:
-          MARKETSTACK_API_KEY: "dummy"
         run: |
           uv run pytest
