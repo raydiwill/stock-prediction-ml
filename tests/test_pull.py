@@ -1,5 +1,12 @@
+import pandas as pd
 import pytest
-from stock_prediction_ml.marketstack.pull import *
+
+from stock_prediction_ml.marketstack.pull import (
+    fetch_eod_with_date,
+    load_config,
+    process_dataframe,
+    save_to_parquet,
+)
 
 
 def test_load_config_output_api_key():
