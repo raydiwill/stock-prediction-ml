@@ -37,6 +37,7 @@ jobs:
           uv run ruff --version
           uv run ruff check .
 
-      - name: Run tests (pytest)
-        run: |
-          uv run pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: uv run pytest
