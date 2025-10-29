@@ -29,7 +29,7 @@ jobs:
             ~/.cache/uv
           key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
 
-      - name: Sync dependencies
+      - name: Sync dependencie
         run: uv sync
 
       - name: Lint (ruff)
@@ -39,4 +39,5 @@ jobs:
 
       - name: Run tests (pytest)
         run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/src
           uv run pytest
