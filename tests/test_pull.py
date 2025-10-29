@@ -1,6 +1,5 @@
-import pytest
-
 import pandas as pd
+import pytest
 
 from stock_prediction_ml.marketstack.pull import (
     fetch_eod_with_date,
