@@ -706,7 +706,6 @@ dependencies = [
     { name = "ipykernel" },
     { name = "pandas" },
     { name = "pyarrow" },
-    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "requests" },
 ]
@@ -722,7 +721,6 @@ requires-dist = [
     { name = "ipykernel", specifier = ">=7.0.1" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pyarrow", specifier = ">=22.0.0" },
-    { name = "pytest", specifier = ">=8.4.2" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "requests", specifier = ">=2.32.5" },
 ]
