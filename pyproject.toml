@@ -21,6 +21,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.setuptools.packages.find]
 src = ["src"]
 
 [tool.ruff.lint]
