@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install uv
         run: pip install uv
@@ -39,5 +39,4 @@ jobs:
 
       - name: Run tests (pytest)
         run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)/src
           uv run pytest
