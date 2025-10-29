@@ -1,10 +1,13 @@
 [project]
 name = "stock-prediction-ml"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal portfolio project for stock price prediction using E2E ML model"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "ipykernel>=7.0.1",
+    "requests>=2.32.5",
+]
 
 [dependency-groups]
 dev = [
