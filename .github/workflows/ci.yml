@@ -37,7 +37,8 @@ jobs:
           uv run ruff --version
           uv run ruff check .
 
+      - name: Install package
+        run: uv pip install -e .
+        
       - name: Run tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}/src
         run: uv run pytest
