@@ -17,7 +17,8 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/folder"]
+only-include = ["src/stock_prediction_ml"]
+sources = ["src"]
 
 [dependency-groups]
 dev = [
@@ -31,6 +32,9 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff.lint]
 select = ["E","F","I","UP"]
