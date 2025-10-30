@@ -1,11 +1,10 @@
-import os
 import logging
+import os
+from pathlib import Path
 
 import pandas as pd
 import requests
-from pathlib import Path
 from dotenv import load_dotenv
-from typing import List
 
 from stock_prediction_ml.marketstack import API_URL
 
@@ -25,12 +24,12 @@ def load_config() -> str:
 
 def fetch_eod_with_date(
     api_key: str,
-    tickers: List[str],
+    tickers: list[str],
     start_date: str,
     end_date: str,
     limit: int = 1000,
     offset: int = 0,
-) -> List[dict]:
+) -> list[dict]:
     api_url = f"{API_URL}/eod"
     # Define your parameters
     params = {
@@ -55,7 +54,7 @@ def fetch_eod_with_date(
     return data["data"]
 
 
-def process_dataframe(stock_data: List[dict]) -> pd.DataFrame:
+def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
     df = pd.DataFrame(stock_data)
     df['date'] = pd.to_datetime(df['date'])
     df = df[['date', 'symbol', 'open', 'high', 'low', 'close', 'volume', 'adj_close']]
