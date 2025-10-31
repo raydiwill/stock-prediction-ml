@@ -16,7 +16,7 @@ Next milestones: feature engineering → model training → evaluation → deplo
 ---
 
 ## 📁 Project layout  
-```bash
+```bas
 ├─ data/
 │ └─ raw/ # output directory for Parquet files
 ├─ notebooks/
