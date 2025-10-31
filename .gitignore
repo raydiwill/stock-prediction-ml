@@ -4,6 +4,8 @@ __pycache__/
 build/
 dist/
 wheels/
+*.pyc
+.pytest_cache/
 *.egg-info
 
 # Virtual environments
@@ -11,3 +13,9 @@ wheels/
 
 # macOS DS_Store files
 .DS_Store
+
+# Environment variables file
+*.env
+
+# Data folder
+data/

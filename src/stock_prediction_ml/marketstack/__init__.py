@@ -1,0 +1,1 @@
+API_URL = 'https://api.marketstack.com/v2'
