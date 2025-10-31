@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 def load_config() -> str:
+    """Load configuration from .env file and return the API key.
+
+    :Returns:
+        str: MarketStack API key
+
+    :Examples:
+    >>> load_config()
+    "your_api_key_here"
+    """
     env_path = Path(__file__).parent.parent.parent.parent / "config.env"
     load_dotenv(env_path)
 
@@ -31,8 +40,41 @@ def fetch_eod_with_date(
     limit: int = 1000,
     offset: int = 0,
 ) -> list[dict]:
-    api_url = f"{API_URL}/eod"
-    # Define your parameters
+    """Fetch EOD stock data from MarketStack API within a date range.
+    :Args:
+        api_key (str): MarketStack API key
+        tickers (list[str]): List of stock symbols
+        start_date (str): Start date in YYYY-MM-DD format
+        end_date (str): End date in YYYY-MM-DD format
+        limit (int): Number of results per page
+        offset (int): Pagination offset
+    :Returns:
+        list[dict]: List of EOD stock data records
+
+    :Examples:
+    >>> fetch_eod_with_date(
+    ...     api_key="your_api_key_here",
+    ...     tickers=["AAPL", "MSFT"],
+    ...     start_date="2025-01-01",
+    ...     end_date="2025-01-10",
+    ...     limit=1000,
+    ...     offset=0,
+    ... )
+    [  # Example output
+        {"date": "2025-01-02",
+         "symbol": "AAPL",
+         "open": 150.0,
+         "high": 155.0,
+         "low": 149.0,
+         "close": 154.0,
+         "volume": 1000000,
+         "adj_close": 154.0,
+        },
+    ]
+    """
+    api_url = f"{API_URL}/eod"  # EOD endpoint
+
+    # Define your parameters for the API request
     params = {
         "access_key": api_key,
         "symbols": tickers,  # Stock symbols
@@ -56,6 +98,31 @@ def fetch_eod_with_date(
 
 
 def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
+    """Process raw stock data into a pandas DataFrame.
+
+    :Args:
+        stock_data (list[dict]): Raw stock data from API
+
+    :Returns:
+        pd.DataFrame: Processed DataFrame with selected columns
+
+    :Examples:
+    >>> stock_data = [
+    ...     {"date": "2025-01-02",
+    ...      "symbol": "AAPL",
+    ...      "open": 150.0,
+    ...      "high": 155.0,
+    ...      "low": 149.0,
+    ...      "close": 154.0,
+    ...      "volume": 1000000,
+    ...      "adj_close": 154.0,
+    ...     },
+    ... ]
+    >>> df = process_dataframe(stock_data)
+    >>> df.head()
+            date symbol   open   high    low  close   volume  adj_close
+    0 2025-01-02   AAPL  150.0  155.0  149.0  154.0  1000000      154.0
+    """
     df = pd.DataFrame(stock_data)
     df["date"] = pd.to_datetime(df["date"])
     df = df[["date", "symbol", "open", "high", "low", "close", "volume", "adj_close"]]
@@ -65,6 +132,29 @@ def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
 
 
 def save_to_parquet(df: pd.DataFrame, filename: str) -> None:
+    """Save DataFrame to a Parquet file.
+
+    :Args:
+        df (pd.DataFrame): DataFrame to save
+        filename (str): Output Parquet filename
+
+    :Returns:
+        None
+
+    :Examples:
+    >>> df = pd.DataFrame({
+    ...     "date": ["2025-01-02"],
+    ...     "symbol": ["AAPL"],
+    ...     "open": [150.0],
+    ...     "high": [155.0],
+    ...     "low": [149.0],
+    ...     "close": [154.0],
+    ...     "volume": [1000000],
+    ...     "adj_close": [154.0],
+    ... })
+    >>> save_to_parquet(df, "eod_data.parquet")
+    Saved to data/raw/eod_data.parquet
+    """
     output_path = Path("data/raw") / filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
