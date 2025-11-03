@@ -124,9 +124,7 @@ def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
     0 2025-01-02   AAPL  150.0  155.0  149.0  154.0  1000000      154.0
     """
     df = pd.DataFrame(stock_data)
-    df["date"] = pd.to_datetime(
-        df["date"], format="%Y-%m-%dT%H:%M:%S%z", utc=True, errors="raise"
-    )
+    df["date"] = pd.to_datetime(df["date"])
     df = df[["date", "symbol", "open", "high", "low", "close", "volume", "adj_close"]]
     df = df.sort_values(["date", "symbol"]).reset_index(drop=True)
 
