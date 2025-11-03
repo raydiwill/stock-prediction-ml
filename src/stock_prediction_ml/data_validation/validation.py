@@ -64,7 +64,7 @@ def build_expectation_suite(name: str = "stock_data_expectation_suite"):
         gx.expectations.ExpectColumnValuesToNotBeNull(column="volume")
     )
 
-    # --- Data types (Pandas dtypes shown; adjust if your backend differs) ---
+    # --- Data types ---
     suite.add_expectation(
         gx.expectations.ExpectColumnValuesToBeOfType(
             column="date", type_="datetime64[ns]"
@@ -91,7 +91,7 @@ def build_expectation_suite(name: str = "stock_data_expectation_suite"):
         )
     )
     suite.add_expectation(
-        gx.expectations.ExpectColumnValuesToBeOfType(column="volume", type_="int64")
+        gx.expectations.ExpectColumnValuesToBeOfType(column="volume", type_="float64")
     )
 
     # --- Logical price relationships ---
@@ -163,11 +163,22 @@ def main():
     save_suite(context, suite)
     validation_result = validate_batch(batch, suite)
 
-    logger.info(
-        "Successful expectations: %d / %d",
-        sum(1 for r in validation_result["results"] if r["success"]),
-        len(validation_result["results"]),
-    )
+    # Count successes
+    successful_count = sum(1 for r in validation_result["results"] if r["success"])
+    total_count = len(validation_result["results"])
+    logger.info("Successful expectations: %d / %d", successful_count, total_count)
+
+    # Print failed expectations
+    if successful_count < total_count:
+        logger.info("Failed expectations:")
+        for result in validation_result["results"]:
+            if not result["success"]:
+                expectation_type = result["expectation_config"].type
+                column = result["expectation_config"].kwargs.get("column", "N/A")  # Get the column if available
+                result_details = result.get("result", {})
+                logger.info(f"  - {expectation_type} (column: {column}): {result_details}")
+    else:
+        logger.info("All expectations passed!")
 
 
 if __name__ == "__main__":
