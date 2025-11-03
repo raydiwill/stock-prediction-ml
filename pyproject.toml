@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "stock-prediction-ml"
+name = "stock_prediction_ml"
 version = "0.1.0"
 description = "Personal portfolio project for stock price prediction using E2E ML model"
 readme = "README.md"
@@ -17,8 +17,11 @@ dependencies = [
     "requests>=2.32.5",
 ]
 
+[tool.hatch.build]
+sources = ["src"]
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/stock_prediction_ml"]
+packages = ["stock_prediction_ml"]
 
 [dependency-groups]
 dev = [
