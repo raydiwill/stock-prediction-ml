@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from stock_prediction_ml.marketstack import API_URL
+API_URL = "https://api.marketstack.com/v2"
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
