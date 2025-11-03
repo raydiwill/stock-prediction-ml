@@ -66,10 +66,8 @@ def build_expectation_suite(name: str = "stock_data_expectation_suite"):
 
     # --- Data types ---
     suite.add_expectation(
-        gx.expectations.ExpectColumnValuesToBeOfType(
-            column="date", type_="datetime64[ns]"
-        )
-    )
+        gx.expectations.ExpectColumnValuesToBeOfType(column="date", type_="Timestamp")
+    )  # Timestamp type in Great Expectations for datetime64[ns, UTC]
     suite.add_expectation(
         gx.expectations.ExpectColumnValuesToBeOfType(column="symbol", type_="object")
     )
@@ -174,9 +172,13 @@ def main():
         for result in validation_result["results"]:
             if not result["success"]:
                 expectation_type = result["expectation_config"].type
-                column = result["expectation_config"].kwargs.get("column", "N/A")  # Get the column if available
+                column = result["expectation_config"].kwargs.get(
+                    "column", "N/A"
+                )  # Get the column if available
                 result_details = result.get("result", {})
-                logger.info(f"  - {expectation_type} (column: {column}): {result_details}")
+                logger.info(
+                    f"  - {expectation_type} (column: {column}): {result_details}"
+                )
     else:
         logger.info("All expectations passed!")
 
