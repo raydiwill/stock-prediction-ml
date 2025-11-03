@@ -1,4 +1,3 @@
-
 import great_expectations as gx
 import pandas as pd
 import pytest
@@ -30,37 +29,36 @@ def fake_stock_data():
 
 def test_get_context_return_gx_context():
     context = get_context()
-    assert isinstance(context, gx.DataContext)
+    assert isinstance(context, gx.data_context.data_context.ephemeral_data_context.EphemeralDataContext)
 
 
 def test_add_pandas_datasource_returns_pandas_datasource():
     context = get_context()
     datasource = add_pandas_datasource(context)
-    assert isinstance(datasource, gx.data_sources.PandasDatasource)
+    assert isinstance(datasource, gx.datasource.fluent.pandas_datasource.PandasDatasource)
 
 
 def test_add_dataframe_asset_returns_dataframe_asset():
     context = get_context()
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
-    assert isinstance(data_asset, gx.data_assets.DataFrameAsset)
+    assert isinstance(data_asset, gx.datasource.fluent.pandas_datasource.DataFrameAsset)
 
 
-def test_get_batch_returns_batch(tmp_path):
+def test_get_batch_returns_batch(tmp_path, fake_stock_data):
     context = get_context()
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
     batch_definition = get_batch_definition(data_asset)
 
-    # Create a sample DataFrame and save it as a Parquet file for testing
-    sample_data = fake_stock_data()
-    df = pd.DataFrame(sample_data)
+    # Use fake_stock_data directly (it's already the dict)
+    df = pd.DataFrame(fake_stock_data)
 
     parquet_path = tmp_path / "sample.parquet"
     df.to_parquet(parquet_path)
 
     batch = get_batch(parquet_path, batch_definition)
-    assert isinstance(batch, gx.core.batch.Batch)
+    assert isinstance(batch, gx.datasource.fluent.interfaces.Batch)
 
 
 def test_get_batch_definition_returns_batch_definition():
@@ -68,22 +66,24 @@ def test_get_batch_definition_returns_batch_definition():
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
     batch_definition = get_batch_definition(data_asset)
-    assert isinstance(batch_definition, gx.batch_definitions.BatchDefinition)
+    assert isinstance(batch_definition, gx.core.batch_definition.BatchDefinition)
 
 
 def test_build_expectation_suite_returns_expectation_suite():
     suite = build_expectation_suite()
-    assert isinstance(suite, gx.expectations.ExpectationSuite)
+    assert isinstance(suite, gx.core.expectation_suite.ExpectationSuite)
 
 
 @pytest.mark.parametrize(
     "expectation",
     [
-        "expect_table_columns_to_match_set",
-        "expect_column_values_to_not_be_null",
-        "expect_table_row_count_to_be_between",
-        "expect_column_values_to_be_in_set",
-        "expect_column_values_to_be_between",
+        'expect_column_pair_values_a_to_be_greater_than_b',
+        'expect_column_values_to_be_in_set',
+        'expect_column_values_to_be_of_type',
+        'expect_column_values_to_not_be_null',
+        'expect_compound_columns_to_be_unique',
+        'expect_table_columns_to_match_set',
+        'expect_table_row_count_to_be_between'
     ],
 )
 def test_suite_has_expected_expectations(expectation):
@@ -95,15 +95,14 @@ def test_suite_has_expected_expectations(expectation):
     assert expectation in expectation_types
 
 
-def test_validate_batch_returns_validation_result(tmp_path):
+def test_validate_batch_returns_validation_result(tmp_path, fake_stock_data):
     context = get_context()
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
     batch_definition = get_batch_definition(data_asset)
 
-    # Create a sample DataFrame and save it as a Parquet file for testing
-    sample_data = fake_stock_data()
-    df = pd.DataFrame(sample_data)
+    # Use fake_stock_data directly (it's already the dict)
+    df = pd.DataFrame(fake_stock_data)
 
     parquet_path = tmp_path / "sample.parquet"
     df.to_parquet(parquet_path)
@@ -112,4 +111,4 @@ def test_validate_batch_returns_validation_result(tmp_path):
     suite = build_expectation_suite()
     validation_result = validate_batch(batch, suite)
 
-    assert isinstance(validation_result, gx.core.validation_validation_result.ValidationResult)
+    assert isinstance(validation_result, gx.core.expectation_validation_result.ExpectationSuiteValidationResult)
