@@ -29,13 +29,18 @@ def fake_stock_data():
 
 def test_get_context_return_gx_context():
     context = get_context()
-    assert isinstance(context, gx.data_context.data_context.ephemeral_data_context.EphemeralDataContext)
+    assert isinstance(
+        context,
+        gx.data_context.data_context.ephemeral_data_context.EphemeralDataContext,
+    )
 
 
 def test_add_pandas_datasource_returns_pandas_datasource():
     context = get_context()
     datasource = add_pandas_datasource(context)
-    assert isinstance(datasource, gx.datasource.fluent.pandas_datasource.PandasDatasource)
+    assert isinstance(
+        datasource, gx.datasource.fluent.pandas_datasource.PandasDatasource
+    )
 
 
 def test_add_dataframe_asset_returns_dataframe_asset():
@@ -77,13 +82,13 @@ def test_build_expectation_suite_returns_expectation_suite():
 @pytest.mark.parametrize(
     "expectation",
     [
-        'expect_column_pair_values_a_to_be_greater_than_b',
-        'expect_column_values_to_be_in_set',
-        'expect_column_values_to_be_of_type',
-        'expect_column_values_to_not_be_null',
-        'expect_compound_columns_to_be_unique',
-        'expect_table_columns_to_match_set',
-        'expect_table_row_count_to_be_between'
+        "expect_column_pair_values_a_to_be_greater_than_b",
+        "expect_column_values_to_be_in_set",
+        "expect_column_values_to_be_of_type",
+        "expect_column_values_to_not_be_null",
+        "expect_compound_columns_to_be_unique",
+        "expect_table_columns_to_match_set",
+        "expect_table_row_count_to_be_between",
     ],
 )
 def test_suite_has_expected_expectations(expectation):
@@ -111,4 +116,7 @@ def test_validate_batch_returns_validation_result(tmp_path, fake_stock_data):
     suite = build_expectation_suite()
     validation_result = validate_batch(batch, suite)
 
-    assert isinstance(validation_result, gx.core.expectation_validation_result.ExpectationSuiteValidationResult)
+    assert isinstance(
+        validation_result,
+        gx.core.expectation_validation_result.ExpectationSuiteValidationResult,
+    )
