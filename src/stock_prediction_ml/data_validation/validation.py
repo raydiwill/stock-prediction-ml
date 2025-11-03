@@ -14,7 +14,7 @@ def get_context():
 
 
 def add_pandas_datasource(context, name: str = "pandas_datasource"):
-    return context.sources.add_pandas(name=name)
+    return context.data_sources.add_pandas(name=name)
 
 
 def add_dataframe_asset(datasource, name: str = "data_asset"):
@@ -29,7 +29,7 @@ def get_batch(parquet_path: Path, batch_definition):
     df = pd.read_parquet(parquet_path)
 
     batch_parameters = {"dataframe": df}
-    batch = batch_definition.get_batch(batch_data=batch_parameters)
+    batch = batch_definition.get_batch(batch_parameters=batch_parameters)
 
     return batch
 
