@@ -77,7 +77,7 @@ def fetch_eod_with_date(
     # Define your parameters for the API request
     params = {
         "access_key": api_key,
-        "symbols": tickers,  # Stock symbols
+        "symbols": ','.join(tickers),  # Stock symbols
         "limit": limit,  # Number of results per page
         "offset": offset,  # Pagination offset (Number of results to skip)
         "sort": "ASC",  # Sort order
