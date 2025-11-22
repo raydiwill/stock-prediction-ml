@@ -6,7 +6,10 @@ import numpy as np
 import pandas as pd
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -47,13 +50,23 @@ def read_raw_data(
     else:
         folder = Path(folder_path)
 
+    logger.info(f"Reading raw data from folder: {folder}")
     files = list(folder.glob("*.parquet"))
+    
     if not files:
+        logger.error(f"No Parquet files found in {folder}")
         raise ValueError(f"No Parquet files found in {folder}")
 
-    df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-    df["date"] = pd.to_datetime(df["date"], utc=True)
+    logger.info(f"Found {len(files)} Parquet file(s)")
+    logger.info(f"Files to read: {[f.name for f in files]}")
 
+    df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+    logger.info(f"Combined data shape: {df.shape}")
+    
+    df["date"] = pd.to_datetime(df["date"], utc=True)
+    logger.info(f"Date column converted to datetime. Date range: {df['date'].min()} to {df['date'].max()}")
+    logger.info(f"Filtered to {len(column_to_keep)} columns: {column_to_keep}")
+    
     return df[column_to_keep]
 
 
@@ -78,8 +91,10 @@ def save_combined_data(
     else:
         file_path = Path(file_path)
 
+    logger.info(f"Saving combined data to: {file_path}")
     file_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(file_path, index=False)
+    logger.info(f"Successfully saved {len(df)} rows to {file_path}")
 
 
 def read_combined_data(
@@ -103,7 +118,12 @@ def read_combined_data(
     else:
         file_path = Path(file_path)
     
-    return pd.read_parquet(file_path)
+    logger.info(f"Reading combined data from: {file_path}")
+    df = pd.read_parquet(file_path)
+    logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
+    logger.info(f"Columns: {df.columns.tolist()}")
+    
+    return df
 
 
 def create_target(df: pd.DataFrame) -> pd.DataFrame:
@@ -128,9 +148,17 @@ def create_target(df: pd.DataFrame) -> pd.DataFrame:
         >>> result['target'].tolist()
         [1]
     """
+    logger.info("Creating target variable")
+    initial_len = len(df)
+    
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
     df["target"] = (df.groupby("symbol")["close"].shift(-1) > df["close"]).astype(int)
     df = df.dropna()
+    
+    target_dist = df['target'].value_counts()
+    logger.info(f"Target created. Class distribution: {target_dist.to_dict()}")
+    logger.info(f"Rows dropped (NaN): {initial_len - len(df)}")
+    
     return df
 
 
@@ -155,9 +183,11 @@ def create_range_features(df: pd.DataFrame) -> pd.DataFrame:
         >>> result[['high_low', 'close_open']].iloc[0].tolist()
         [10, 5]
     """
+    logger.info("Creating range features: high_low, close_open, return")
     df["high_low"] = df["high"] - df["low"]
     df["close_open"] = df["close"] - df["open"]
     df["return"] = df["close"].pct_change()
+    logger.info("Range features created successfully")
     return df
 
 
@@ -178,8 +208,10 @@ def create_lag_features(df: pd.DataFrame, lag_days: list[int]) -> pd.DataFrame:
         >>> result['return_lag_1'].tolist()
         [nan, 0.01, 0.02]
     """
+    logger.info(f"Creating lag features for days: {lag_days}")
     for day in lag_days:
         df[f"return_lag_{day}"] = df["return"].shift(day)
+    logger.info(f"Created {len(lag_days)} lag features")
     return df
 
 
@@ -202,9 +234,11 @@ def create_rolling_features(
         >>> result['return_roll_mean_3'].iloc[2]
         0.02
     """
+    logger.info(f"Creating rolling features for windows: {rolling_windows}")
     for window in rolling_windows:
         df[f"return_roll_mean_{window}"] = df["return"].rolling(window).mean()
         df[f"return_roll_std_{window}"] = df["return"].rolling(window).std()
+    logger.info(f"Created rolling features for {len(rolling_windows)} windows")
     return df
 
 
@@ -224,12 +258,14 @@ def create_time_features(df: pd.DataFrame) -> pd.DataFrame:
         >>> result[['day_of_week', 'month']].iloc[0].tolist()
         [2, 1]
     """
+    logger.info("Creating time-based features")
     df["date"] = pd.to_datetime(df["date"])
     df["day_of_week"] = df["date"].dt.weekday
     df["month"] = df["date"].dt.month
     df["day_of_month"] = df["date"].dt.day
     df["quarter"] = df["date"].dt.quarter
     df["is_quarter_end"] = df["date"].dt.is_quarter_end.astype(int)
+    logger.info("Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end")
     return df
 
 
@@ -249,8 +285,10 @@ def create_sma_features(df: pd.DataFrame) -> pd.DataFrame:
         >>> result['sma_10'].iloc[9]
         104.5
     """
+    logger.info("Creating SMA features: sma_10, sma_20")
     df["sma_10"] = df["close"].rolling(window=10, min_periods=10).mean()
     df["sma_20"] = df["close"].rolling(window=20, min_periods=20).mean()
+    logger.info("SMA features created successfully")
     return df
 
 
@@ -271,6 +309,7 @@ def create_rsi_features(df: pd.DataFrame, window: int = 14) -> pd.DataFrame:
         >>> result['rsi_14'].iloc[13]  # Approximate value
         100.0
     """
+    logger.info(f"Creating RSI feature with window={window}")
     delta = df["close"].diff()
 
     gain = np.where(delta > 0, delta, 0)
@@ -281,6 +320,7 @@ def create_rsi_features(df: pd.DataFrame, window: int = 14) -> pd.DataFrame:
 
     rs = avg_gain / (avg_loss.replace(0, np.nan))
     df["rsi_14"] = 100 - (100 / (1 + rs))
+    logger.info(f"RSI feature created with window={window}")
     return df
 
 
@@ -300,11 +340,13 @@ def create_ema_macd_features(df: pd.DataFrame) -> pd.DataFrame:
         >>> result[['ema_12', 'macd']].iloc[25]  # Approximate values
         (ema_12=..., macd=...)
     """
+    logger.info("Creating EMA and MACD features")
     df["ema_12"] = df["close"].ewm(span=12, adjust=False).mean()
     df["ema_26"] = df["close"].ewm(span=26, adjust=False).mean()
 
     df["macd"] = df["ema_12"] - df["ema_26"]
     df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
+    logger.info("EMA and MACD features created: ema_12, ema_26, macd, macd_signal")
     return df
 
 
@@ -335,6 +377,10 @@ def create_features(
         >>> result.shape[0] < 50  # Should be less due to drops
         True
     """
+    logger.info("Starting feature creation pipeline")
+    initial_shape = df.shape
+    logger.info(f"Initial DataFrame shape: {initial_shape}")
+    
     df = create_target(df)
     df = create_range_features(df)
     df = create_lag_features(df, lag_days)
@@ -346,11 +392,21 @@ def create_features(
 
     # drop the initial warm-up rows for rolling/lag features
     W_DROP = 20
+    logger.info(f"Dropping first {W_DROP} rows for warm-up period")
     df = df.iloc[W_DROP:]
 
     # drop any leftover NaNs
+    before_dropna = len(df)
     df = df.dropna().reset_index(drop=True)
-
+    dropped_nan = before_dropna - len(df)
+    
+    if dropped_nan > 0:
+        logger.info(f"Dropped {dropped_nan} rows with NaN values")
+    
+    final_shape = df.shape
+    logger.info(f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})")
+    logger.info(f"Total features created: {final_shape[1] - initial_shape[1]}")
+    
     return df
 
 
@@ -373,8 +429,11 @@ def save_feature_data(
     """
     output_path = Path(out_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"Saving feature data to: {output_path}")
     df.to_parquet(output_path, index=False)
-    logger.info(f"Saved to {output_path}")
+    logger.info(f"Successfully saved {len(df)} rows to {output_path}")
+    logger.debug(f"File size: {output_path.stat().st_size / 1024:.2f} KB")
 
 
 def main():
@@ -394,15 +453,26 @@ def main():
         help="Output filename for the feature Parquet file.",
     )
     args = parser.parse_args()
-
-    df = read_raw_data(args.input_folder)
-    logger.info("Raw data read successfully.")
-    save_combined_data(df)
-    logger.info("Combined raw data saved successfully.")
-    df = read_combined_data()
-    df_features = create_features(df)
-    save_feature_data(df_features, args.output_filename)
-    logger.info("Feature data saved successfully.")
+    logger.info("=== Feature Engineering Pipeline Started ===")
+    
+    try:
+        df = read_raw_data(args.input_folder)
+        logger.info("Raw data read successfully.")
+        
+        save_combined_data(df)
+        logger.info("Combined raw data saved successfully.")
+        
+        df = read_combined_data()
+        df_features = create_features(df)
+        
+        save_feature_data(df_features, args.output_filename)
+        logger.info("Feature data saved successfully.")
+        
+        logger.info("=== Feature Engineering Pipeline Completed Successfully ===")
+        
+    except Exception as e:
+        logger.error(f"Pipeline failed with error: {str(e)}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
