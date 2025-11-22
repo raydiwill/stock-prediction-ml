@@ -382,6 +382,12 @@ def main():
         description="Build features for stock prediction from raw EOD data."
     )
     parser.add_argument(
+        "--input_folder",
+        type=str,
+        default=None,
+        help="Input folder containing raw Parquet files.",
+    )
+    parser.add_argument(
         "--output_filename",
         type=str,
         default="stock_eod_features.parquet",
@@ -389,7 +395,7 @@ def main():
     )
     args = parser.parse_args()
 
-    df = read_raw_data()
+    df = read_raw_data(args.input_folder)
     logger.info("Raw data read successfully.")
     save_combined_data(df)
     logger.info("Combined raw data saved successfully.")
