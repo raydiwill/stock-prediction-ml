@@ -7,8 +7,7 @@ import pandas as pd
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ def read_raw_data(
 
     logger.info(f"Reading raw data from folder: {folder}")
     files = list(folder.glob("*.parquet"))
-    
+
     if not files:
         logger.error(f"No Parquet files found in {folder}")
         raise ValueError(f"No Parquet files found in {folder}")
@@ -62,18 +61,17 @@ def read_raw_data(
 
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
     logger.info(f"Combined data shape: {df.shape}")
-    
+
     df["date"] = pd.to_datetime(df["date"], utc=True)
-    logger.info(f"Date column converted to datetime. Date range: {df['date'].min()} to {df['date'].max()}")
+    logger.info(
+        f"Date column converted to datetime. Date range: {df['date'].min()} to {df['date'].max()}"
+    )
     logger.info(f"Filtered to {len(column_to_keep)} columns: {column_to_keep}")
-    
+
     return df[column_to_keep]
 
 
-def save_combined_data(
-    df: pd.DataFrame,
-    file_path: str | Path | None = None
-) -> None:
+def save_combined_data(df: pd.DataFrame, file_path: str | Path | None = None) -> None:
     """Save combined raw data to a Parquet file.
 
     Args:
@@ -82,12 +80,7 @@ def save_combined_data(
             If None, the default project data/processed folder is used.
     """
     if file_path is None:
-        file_path = (
-            PROJECT_ROOT
-            / "data"
-            / "processed"
-            / "combined_eod.parquet"
-        )
+        file_path = PROJECT_ROOT / "data" / "processed" / "combined_eod.parquet"
     else:
         file_path = Path(file_path)
 
@@ -97,9 +90,7 @@ def save_combined_data(
     logger.info(f"Successfully saved {len(df)} rows to {file_path}")
 
 
-def read_combined_data(
-    file_path: str | Path | None = None
-) -> pd.DataFrame:
+def read_combined_data(file_path: str | Path | None = None) -> pd.DataFrame:
     """Read combined raw data from a Parquet file.
 
     Args:
@@ -109,20 +100,15 @@ def read_combined_data(
         pd.DataFrame: DataFrame read from the Parquet file.
     """
     if file_path is None:
-        file_path = (
-            PROJECT_ROOT
-            / "data"
-            / "processed"
-            / "combined_eod.parquet"
-        )
+        file_path = PROJECT_ROOT / "data" / "processed" / "combined_eod.parquet"
     else:
         file_path = Path(file_path)
-    
+
     logger.info(f"Reading combined data from: {file_path}")
     df = pd.read_parquet(file_path)
     logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
     logger.info(f"Columns: {df.columns.tolist()}")
-    
+
     return df
 
 
@@ -150,15 +136,15 @@ def create_target(df: pd.DataFrame) -> pd.DataFrame:
     """
     logger.info("Creating target variable")
     initial_len = len(df)
-    
+
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
     df["target"] = (df.groupby("symbol")["close"].shift(-1) > df["close"]).astype(int)
     df = df.dropna()
-    
-    target_dist = df['target'].value_counts()
+
+    target_dist = df["target"].value_counts()
     logger.info(f"Target created. Class distribution: {target_dist.to_dict()}")
     logger.info(f"Rows dropped (NaN): {initial_len - len(df)}")
-    
+
     return df
 
 
@@ -265,7 +251,9 @@ def create_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df["day_of_month"] = df["date"].dt.day
     df["quarter"] = df["date"].dt.quarter
     df["is_quarter_end"] = df["date"].dt.is_quarter_end.astype(int)
-    logger.info("Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end")
+    logger.info(
+        "Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end"
+    )
     return df
 
 
@@ -380,7 +368,7 @@ def create_features(
     logger.info("Starting feature creation pipeline")
     initial_shape = df.shape
     logger.info(f"Initial DataFrame shape: {initial_shape}")
-    
+
     df = create_target(df)
     df = create_range_features(df)
     df = create_lag_features(df, lag_days)
@@ -399,14 +387,16 @@ def create_features(
     before_dropna = len(df)
     df = df.dropna().reset_index(drop=True)
     dropped_nan = before_dropna - len(df)
-    
+
     if dropped_nan > 0:
         logger.info(f"Dropped {dropped_nan} rows with NaN values")
-    
+
     final_shape = df.shape
-    logger.info(f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})")
+    logger.info(
+        f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})"
+    )
     logger.info(f"Total features created: {final_shape[1] - initial_shape[1]}")
-    
+
     return df
 
 
@@ -429,7 +419,7 @@ def save_feature_data(
     """
     output_path = Path(out_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info(f"Saving feature data to: {output_path}")
     df.to_parquet(output_path, index=False)
     logger.info(f"Successfully saved {len(df)} rows to {output_path}")
@@ -454,22 +444,22 @@ def main():
     )
     args = parser.parse_args()
     logger.info("=== Feature Engineering Pipeline Started ===")
-    
+
     try:
         df = read_raw_data(args.input_folder)
         logger.info("Raw data read successfully.")
-        
+
         save_combined_data(df)
         logger.info("Combined raw data saved successfully.")
-        
+
         df = read_combined_data()
         df_features = create_features(df)
-        
+
         save_feature_data(df_features, args.output_filename)
         logger.info("Feature data saved successfully.")
-        
+
         logger.info("=== Feature Engineering Pipeline Completed Successfully ===")
-        
+
     except Exception as e:
         logger.error(f"Pipeline failed with error: {str(e)}", exc_info=True)
         raise
