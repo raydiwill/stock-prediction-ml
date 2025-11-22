@@ -402,7 +402,7 @@ def create_features(
 
 def save_feature_data(
     df: pd.DataFrame,
-    out_path: str = "data/processed/stock_eod_features.parquet",
+    file_name: str | None = None,
 ) -> None:
     """Save feature DataFrame to a Parquet file.
 
@@ -417,6 +417,14 @@ def save_feature_data(
     >>> save_feature_data(df, "feature_data.parquet")
     Saved to data/processed/feature_data.parquet
     """
+    file_path = PROJECT_ROOT / "data" / "feature"
+    if file_name is None:
+        out_path = file_path / "stock_eod_features.parquet"
+    else:
+        if not file_name.endswith(".parquet"):
+            file_name += ".parquet"
+        out_path = file_path / file_name
+
     output_path = Path(out_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
