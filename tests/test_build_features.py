@@ -46,10 +46,10 @@ def test_read_raw_data_merges_all_parquet_files(tmp_path):
     # Check if combined DataFrame is correct
     assert len(df_combined) == 4
     assert sorted(df_combined["date"].unique().tolist()) == [
-        "2025-01-01",
-        "2025-01-02",
-        "2025-01-03",
-        "2025-01-04",
+        pd.Timestamp("2025-01-01", tz="UTC"),
+        pd.Timestamp("2025-01-02", tz="UTC"),
+        pd.Timestamp("2025-01-03", tz="UTC"),
+        pd.Timestamp("2025-01-04", tz="UTC"),
     ]
 
 
