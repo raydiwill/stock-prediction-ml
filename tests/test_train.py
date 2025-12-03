@@ -1,3 +1,4 @@
+import json
 from pathlib import PosixPath
 
 import joblib
@@ -25,21 +26,51 @@ from stock_prediction_ml.model.train import (
 
 
 @pytest.fixture
-def config():
-    """Load default config."""
-    return load_config("configs/training/local.yaml")
+def test_config_path(tmp_path):
+    # Minimal config for tests with temp paths
+    cfg = {
+        "training_data_path": str(tmp_path / "features.parquet"),
+        "selected_features_path": str(tmp_path / "selected_features.json"),
+        "target": "target",
+        "model_params": {"iterations": 50, "depth": 4, "random_seed": 42},
+        "test_size": 0.2,
+        "meta_dir": str(tmp_path / "meta"),
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.dump(cfg))
+    return path
 
 
 @pytest.fixture
-def raw_df():
-    """Load raw training data."""
-    return load_raw_training_data("data/feature/stock_eod_features.parquet")
+def raw_df(tmp_path, test_config_path):
+    # Build a small synthetic DataFrame and save parquet
+    import numpy as np
+    import pandas as pd
+
+    dates = pd.date_range("2025-01-01", periods=100, freq="D", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "date": np.repeat(dates, 3),
+            "symbol": ["AAPL", "MSFT", "TSLA"] * len(dates),
+            "return": np.random.randn(len(dates) * 3),
+            "target": np.random.randint(0, 2, size=len(dates) * 3),
+        }
+    )
+    df.to_parquet(tmp_path / "features.parquet")
+    return load_raw_training_data(tmp_path / "features.parquet")
 
 
 @pytest.fixture
-def selected_features():
-    """Load selected features."""
-    return load_selected_features("data/meta/selected_features.json")
+def selected_features(tmp_path):
+    # Save small feature list JSON
+    feats = {"features": ["return", "symbol_AAPL", "symbol_MSFT", "symbol_TSLA"]}
+    (tmp_path / "selected_features.json").write_text(json.dumps(feats))
+    return load_selected_features(tmp_path / "selected_features.json")
+
+
+@pytest.fixture
+def config(test_config_path):
+    return load_config(test_config_path)
 
 
 @pytest.fixture
@@ -122,7 +153,6 @@ def saved_model_path(trained_model, tmp_path):
         "target",
         "model_params",
         "test_size",
-        "mlflow",
         "meta_dir",
     ],
 )
@@ -226,13 +256,10 @@ def test_load_and_transform_with_encoder_adds_ohe_columns(encoded_data):
 
     assert "symbol" not in train_encoded.columns
 
+    # Synthetic data only has 3 symbols: AAPL, MSFT, TSLA
     expected_encoded = [
         "symbol_AAPL",
-        "symbol_AMZN",
-        "symbol_GOOGL",
-        "symbol_META",
         "symbol_MSFT",
-        "symbol_NVDA",
         "symbol_TSLA",
     ]
 
