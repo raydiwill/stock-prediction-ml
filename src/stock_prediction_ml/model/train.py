@@ -8,6 +8,7 @@ import mlflow
 import pandas as pd
 import yaml
 from catboost import CatBoostClassifier
+from mlflow.models import infer_signature
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
@@ -417,7 +418,15 @@ def main(config_path: str | Path | None = None):
 
         model_path = save_model(model, model_dir=config.get("model_dir"))
         mlflow.log_artifact(str(model_path), artifact_path="model")
-        mlflow.catboost.log_model(model, name="catboost_model")
+        
+        # Infer signature for better model documentation
+        signature = infer_signature(X_train, model.predict(X_train))
+        mlflow.catboost.log_model(
+            model, 
+            name="catboost_model",
+            signature=signature,
+            input_example=X_train[:5]
+        )
 
 
 if __name__ == "__main__":
