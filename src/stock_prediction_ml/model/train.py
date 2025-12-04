@@ -417,7 +417,7 @@ def main(config_path: str | Path | None = None):
 
         model_path = save_model(model, model_dir=config.get("model_dir"))
         mlflow.log_artifact(str(model_path), artifact_path="model")
-        mlflow.catboost.log_model(model, artifact_path="catboost_model")
+        mlflow.catboost.log_model(model, name="catboost_model")
 
 
 if __name__ == "__main__":
