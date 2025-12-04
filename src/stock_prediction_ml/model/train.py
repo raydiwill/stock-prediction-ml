@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import joblib
+import matplotlib.pyplot as plt
 import mlflow
 import pandas as pd
 import yaml
@@ -12,9 +13,11 @@ from mlflow.models import infer_signature
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
-# Set up logging
+# Configure enhanced logging with timestamps and better formatting
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -22,8 +25,31 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+def log_section(title: str):
+    """Log a formatted section header for better readability."""
+    logger.info("=" * 80)
+    logger.info(f"  {title.upper()}")
+    logger.info("=" * 80)
+
+
+def log_dict(title: str, data: dict, indent: int = 2):
+    """Log a dictionary with nice formatting."""
+    logger.info(f"{title}:")
+    for key, value in data.items():
+        logger.info(f"  {key}: {value}")
+
+
+def log_dataframe_info(df_name: str, df):
+    """Log DataFrame shape, columns, and date range."""
+    logger.info(f"{df_name}:")
+    logger.info(f"  Shape: {df.shape[0]} rows × {df.shape[1]} columns")
+    logger.info(f"  Columns: {list(df.columns)[:5]}...")  # Show first 5 columns
+    if "date" in df.columns:
+        logger.info(f"  Date range: {df['date'].min()} to {df['date'].max()}")
+
+
 def load_config(config_path: str | Path | None = None) -> dict:
-    """Load configuration from a YAML file.
+    """Load training configuration from YAML file.
 
     Args:
         config_path (str | Path | None): Path to the configuration file.
@@ -42,9 +68,11 @@ def load_config(config_path: str | Path | None = None) -> dict:
     else:
         config_path = Path(config_path)
 
+    logger.info(f"Loading config from: {config_path}")
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    logger.info(f"Config loaded successfully with {len(config)} keys")
     return config
 
 
@@ -100,9 +128,13 @@ def load_raw_training_data(feature_data_path: str | Path | None = None) -> pd.Da
     else:
         feature_data_path = Path(feature_data_path)
 
+    logger.info(f"Loading raw training data from: {feature_data_path}")
     df = pd.read_parquet(feature_data_path)
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values(by=["symbol", "date"])
+
+    log_dataframe_info("Raw training data loaded", df)
+    logger.info(f"Unique symbols: {df['symbol'].nunique()}")
     return df
 
 
@@ -126,6 +158,11 @@ def split_data_train_test(
     cutoff = df["date"].quantile(1 - test_size)
     train = df[df["date"] < cutoff].copy()
     test = df[df["date"] >= cutoff].copy()
+
+    logger.info(f"Split data with test_size={test_size:.1%}")
+    logger.info(f"  Train: {len(train)} rows ({len(train)/len(df)*100:.1f}%)")
+    logger.info(f"  Test:  {len(test)} rows ({len(test)/len(df)*100:.1f}%)")
+    logger.info(f"  Cutoff date: {cutoff}")
     return train, test
 
 
@@ -156,8 +193,14 @@ def fit_and_save_encoder(
         meta_dir = Path(meta_dir)
     meta_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info(f"Fitting OneHotEncoder on '{categorical_column}' column")
     encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
     encoder.fit(train_df[[categorical_column]])
+
+    n_categories = len(encoder.categories_[0])
+    logger.info(f"  Categories found: {n_categories}")
+    logger.info(f"  Categories: {list(encoder.categories_[0])}")
+
     encoder_path = meta_dir / "ohe.pkl"
     joblib.dump(encoder, encoder_path)
     logger.info(f"Saved OneHotEncoder to {encoder_path}")
@@ -249,9 +292,15 @@ def train_model(
         >>> model, info = train_model(X_train, y_train, X_val, y_val, params={'iterations': 200})
         >>> info['best_iteration']
     """
-    params = dict(params)  # ensure params is a dict
-    # Default seed for reproducibility unless provided in config.
+    params = dict(params)
     params.setdefault("random_seed", 42)
+
+    logger.info("Training CatBoost model...")
+    logger.info(f"  Training samples: {len(y_train)}")
+    logger.info(f"  Validation samples: {len(y_val)}")
+    logger.info(f"  Features: {X_train.shape[1]}")
+    log_dict("  Model params", params)
+
     model = CatBoostClassifier(**params)
     model.fit(
         X_train,
@@ -265,6 +314,7 @@ def train_model(
     best_iter = (
         model.get_best_iteration() if hasattr(model, "get_best_iteration") else None
     )
+    logger.info(f"Training complete. Best iteration: {best_iter}")
 
     info = {
         "best_iteration": int(best_iter) if best_iter is not None else None,
@@ -300,7 +350,9 @@ def evaluate_model(model, X_test, y_test, prefix: str = "test") -> dict[str, flo
     metrics[f"{prefix}_accuracy"] = float(accuracy)
     metrics[f"{prefix}_roc_auc"] = float(roc_auc)
 
-    logger.info(f"{prefix.capitalize()} metrics: {metrics}")
+    logger.info(f"{prefix.capitalize()} metrics:")
+    logger.info(f"  Accuracy: {accuracy:.4f}")
+    logger.info(f"  ROC-AUC:  {roc_auc:.4f}")
     return metrics
 
 
@@ -335,6 +387,127 @@ def save_model(
     return model_path
 
 
+def plot_feature_importance(model, feature_names, top_n=20, save_path=None):
+    """Plot and save feature importance from trained CatBoost model.
+
+    Args:
+        model (CatBoostClassifier): Trained model.
+        feature_names (list[str]): List of feature names.
+        top_n (int): Number of top features to display.
+        save_path (str | Path | None): Path to save the plot.
+
+    Returns:
+        Path: Path to saved plot file.
+
+    Example:
+        >>> plot_path = plot_feature_importance(model, selected_features, top_n=20)
+    """
+    # Get feature importances
+    importances = model.get_feature_importance()
+
+    # Create DataFrame and sort
+    importance_df = (
+        pd.DataFrame({"feature": feature_names, "importance": importances})
+        .sort_values("importance", ascending=False)
+        .head(top_n)
+    )
+
+    # Plot
+    plt.figure(figsize=(10, 8))
+    plt.barh(range(len(importance_df)), importance_df["importance"])
+    plt.yticks(range(len(importance_df)), importance_df["feature"])
+    plt.xlabel("Feature Importance")
+    plt.title(f"Top {top_n} Feature Importances")
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+
+    if save_path is None:
+        save_path = Path("docs/images/feature_importance.png")
+    else:
+        save_path = Path(save_path)
+
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved feature importance plot to {save_path}")
+    return save_path
+
+
+def plot_confusion_matrix(y_true, y_pred, save_path=None):
+    """Plot confusion matrix for binary classification.
+
+    Args:
+        y_true (np.ndarray): True labels.
+        y_pred (np.ndarray): Predicted labels.
+        save_path (str | Path | None): Path to save plot.
+
+    Returns:
+        Path: Path to saved plot file.
+    """
+    from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+
+    cm = confusion_matrix(y_true, y_pred)
+
+    _, ax = plt.subplots(figsize=(8, 6))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Down", "Up"])
+    disp.plot(ax=ax, cmap="Blues", values_format="d")
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+
+    if save_path is None:
+        save_path = Path("docs/images/confusion_matrix.png")
+    else:
+        save_path = Path(save_path)
+
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved confusion matrix to {save_path}")
+    return save_path
+
+
+def plot_roc_curve(y_true, y_proba, save_path=None):
+    """Plot ROC curve.
+
+    Args:
+        y_true (np.ndarray): True labels.
+        y_proba (np.ndarray): Predicted probabilities for positive class.
+        save_path (str | Path | None): Path to save plot.
+
+    Returns:
+        Path: Path to saved plot file.
+    """
+    from sklearn.metrics import auc, roc_curve
+
+    fpr, tpr, _ = roc_curve(y_true, y_proba)
+    roc_auc = auc(fpr, tpr)
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(
+        fpr, tpr, color="darkorange", lw=2, label=f"ROC curve (AUC = {roc_auc:.3f})"
+    )
+    plt.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--", label="Random")
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Receiver Operating Characteristic (ROC) Curve")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    if save_path is None:
+        save_path = Path("docs/images/roc_curve.png")
+    else:
+        save_path = Path(save_path)
+
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logger.info(f"Saved ROC curve to {save_path}")
+    return save_path
+
+
 def main(config_path: str | Path | None = None):
     """End-to-end training pipeline with MLflow logging.
 
@@ -344,7 +517,8 @@ def main(config_path: str | Path | None = None):
         3) Fit encoder on train; apply to all splits
         4) Build X/y, train model with early stopping
         5) Evaluate (val/test), log metrics and artifacts
-        6) Save model (.cbm) and log to MLflow
+        6) Generate and log diagnostic plots
+        7) Save model (.cbm) and log to MLflow
 
     Args:
         config_path (str | Path | None): Path to YAML config; defaults to local.yaml.
@@ -355,30 +529,34 @@ def main(config_path: str | Path | None = None):
     Example:
         >>> main("configs/training/local.yaml")
     """
-    config = load_config(config_path)
+    log_section("Stock Prediction Model Training")
 
+    config = load_config(config_path)
+    log_section("Loading data")
     df = load_raw_training_data(config.get("training_data_path"))
     selected_features = load_selected_features(config.get("selected_features_path"))
+    logger.info(f"Selected features: {len(selected_features)} features")
 
+    log_section("Starting MLflow experiment")
     mlflow.set_tracking_uri(config.get("mlflow_tracking_uri", "file:./mlruns"))
     mlflow.set_experiment(config.get("mlflow_experiment", "stock_prediction"))
+
     with mlflow.start_run():
+        logger.info(f"MLflow run ID: {mlflow.active_run().info.run_id}")
+
         mlflow.log_artifact(
             config_path or "configs/training/local.yaml", artifact_path="config"
         )
-        mlflow.log_artifact(config.get("selected_features_path"), artifact_path="meta")
         mlflow.log_params(config.get("model_params", {}))
         mlflow.log_param("selected_feature_count", len(selected_features))
-        mlflow.log_param("n_rows", len(df))
-        mlflow.log_param("min_date", str(df["date"].min()))
-        mlflow.log_param("max_date", str(df["date"].max()))
 
-        # Two-step temporal split: train/val/test by quantiles, no random shuffling.
+        log_section("Splitting data")
         train_val_df, test_df = split_data_train_test(
             df, test_size=config.get("test_size", 0.1)
         )
         train_df, val_df = split_data_train_test(train_val_df, test_size=0.5)
 
+        log_section("Encoding categorical features")
         fit_and_save_encoder(train_df, meta_dir=config.get("meta_dir"))
         mlflow.log_artifact(
             Path(config.get("meta_dir")) / "ohe.pkl", artifact_path="meta"
@@ -403,6 +581,7 @@ def main(config_path: str | Path | None = None):
         X_val, y_val = build_X_y(val_df, selected_features, config["target"])
         X_test, y_test = build_X_y(test_df, selected_features, config["target"])
 
+        log_section("Training model")
         model, info = train_model(
             X_train,
             y_train,
@@ -413,20 +592,36 @@ def main(config_path: str | Path | None = None):
             verbose=config.get("verbose", False),
         )
         mlflow.log_params(info)
+
+        log_section("Evaluating model")
         mlflow.log_metrics(evaluate_model(model, X_val, y_val, prefix="val"))
         mlflow.log_metrics(evaluate_model(model, X_test, y_test, prefix="test"))
 
+        log_section("Generating diagnostics")
+        y_test_pred = model.predict(X_test)
+        y_test_proba = model.predict_proba(X_test)[:, 1]
+
+        fi_plot = plot_feature_importance(model, selected_features, top_n=20)
+        logger.info("Logged feature importance plot")
+        mlflow.log_artifact(str(fi_plot), artifact_path="diagnostics")
+
+        cm_plot = plot_confusion_matrix(y_test, y_test_pred)
+        roc_plot = plot_roc_curve(y_test, y_test_proba)
+        logger.info("Logged confusion matrix and ROC curve")
+        mlflow.log_artifact(str(cm_plot), artifact_path="diagnostics")
+        mlflow.log_artifact(str(roc_plot), artifact_path="diagnostics")
+
+        log_section("Saving model")
         model_path = save_model(model, model_dir=config.get("model_dir"))
         mlflow.log_artifact(str(model_path), artifact_path="model")
-        
-        # Infer signature for better model documentation
+
         signature = infer_signature(X_train, model.predict(X_train))
         mlflow.catboost.log_model(
-            model, 
-            name="catboost_model",
-            signature=signature,
-            input_example=X_train[:5]
+            model, name="catboost_model", signature=signature, input_example=X_train[:5]
         )
+
+        log_section("Training complete")
+        logger.info("View results: mlflow ui --backend-store-uri file:./mlruns")
 
 
 if __name__ == "__main__":
