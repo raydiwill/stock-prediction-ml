@@ -538,11 +538,19 @@ def main(config_path: str | Path | None = None):
     logger.info(f"Selected features: {len(selected_features)} features")
 
     log_section("Starting MLflow experiment")
-    mlflow.set_tracking_uri(config.get("mlflow_tracking_uri", "file:./mlruns"))
-    mlflow.set_experiment(config.get("mlflow_experiment", "stock_prediction"))
+    # Extract MLflow settings from nested dict; fall back to defaults
+    mlflow_config = config.get("mlflow", {})
+    tracking_uri = mlflow_config.get("tracking_uri", "file:./mlruns")
+    experiment_name = mlflow_config.get("experiment_name", "stock_prediction")
+    run_name = mlflow_config.get("run_name", None)
 
-    with mlflow.start_run():
+    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_experiment(experiment_name)
+
+    with mlflow.start_run(run_name=run_name):
         logger.info(f"MLflow run ID: {mlflow.active_run().info.run_id}")
+        logger.info(f"MLflow tracking URI: {tracking_uri}")
+        logger.info(f"MLflow experiment: {experiment_name}")
 
         mlflow.log_artifact(
             config_path or "configs/training/local.yaml", artifact_path="config"
@@ -617,11 +625,14 @@ def main(config_path: str | Path | None = None):
 
         signature = infer_signature(X_train, model.predict(X_train))
         mlflow.catboost.log_model(
-            model, name="catboost_model", signature=signature, input_example=X_train[:5]
+            model, 
+            name="catboost_model", 
+            signature=signature, 
+            input_example=X_train[:5]
         )
 
         log_section("Training complete")
-        logger.info("View results: mlflow ui --backend-store-uri file:./mlruns")
+        logger.info(f"View results: mlflow ui --backend-store-uri {tracking_uri}")
 
 
 if __name__ == "__main__":
