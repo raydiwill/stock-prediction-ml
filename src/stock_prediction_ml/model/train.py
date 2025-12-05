@@ -12,6 +12,7 @@ from catboost import CatBoostClassifier
 from mlflow.models import infer_signature
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
+
 from src.stock_prediction_ml.config.settings import settings
 
 # Configure enhanced logging with timestamps and better formatting
