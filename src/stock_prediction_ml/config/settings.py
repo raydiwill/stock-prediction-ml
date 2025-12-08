@@ -1,4 +1,7 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import (
+    BaseSettings,
+    SettingsConfigDict,
+)  # ✅ Import SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -8,8 +11,7 @@ class Settings(BaseSettings):
 
     marketstack_api_key: str | None = None
 
-    class Config:
-        env_file = "config.env"
+    model_config = SettingsConfigDict(env_file="config.env")
 
 
 settings = Settings()
