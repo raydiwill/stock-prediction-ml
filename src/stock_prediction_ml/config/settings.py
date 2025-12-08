@@ -1,7 +1,7 @@
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
-)  # ✅ Import SettingsConfigDict
+)
 
 
 class Settings(BaseSettings):
