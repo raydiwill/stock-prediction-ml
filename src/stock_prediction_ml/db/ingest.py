@@ -91,6 +91,7 @@ def dataframe_to_rows(df: pd.DataFrame) -> list[dict]:
     df["parquet_path"] = str(
         PROJECT_ROOT / "data" / "processed" / "validated_data.parquet"
     )
+    df["pulled_at"] = pd.to_datetime(df["pulled_at"])
 
     return df.to_dict(orient="records")
 
@@ -124,6 +125,7 @@ def normalize_rows(row: dict) -> dict:
     """
     normalized = row.copy()
     normalized["date"] = pd.to_datetime(row["date"])
+    normalized["pulled_at"] = pd.to_datetime(row["pulled_at"])
     normalized["symbol"] = str(row["symbol"]).upper()
 
     return normalized
@@ -243,7 +245,7 @@ def map_to_db_dict(normalized_row: dict) -> dict:
         "adj_close": float(normalized_row["adj_close"]),
         "source": normalized_row.get("source", "marketstack_api"),
         "hash_input": input_hashing(normalized_row),
-        "pulled_at": normalized_row["pulled_at"],
+        "pulled_at": normalized_row.get("pulled_at"),
         "parquet_path": normalized_row.get("parquet_path"),
         "validated": normalized_row.get("validated", True),
     }
