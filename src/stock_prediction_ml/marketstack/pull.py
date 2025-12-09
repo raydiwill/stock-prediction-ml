@@ -1,164 +1,254 @@
 import argparse
 import logging
-import os
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 import requests
-from dotenv import load_dotenv
+
+from src.stock_prediction_ml.config.settings import settings
 
 API_URL = "https://api.marketstack.com/v2"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
-def load_config() -> str:
-    """Load configuration from .env file and return the API key.
-
-    :Returns:
-        str: MarketStack API key
-
-    :Examples:
-    >>> load_config()
-    "your_api_key_here"
-    """
-    env_path = Path(__file__).parent.parent.parent.parent / "config.env"
-    load_dotenv(env_path)
-
-    api_key = os.getenv("MARKETSTACK_API_KEY")
-
-    return api_key
-
-
-def fetch_eod_with_date(
+def fetch_ticker_data(
     api_key: str,
-    tickers: list[str],
+    symbol: str,
     start_date: str,
     end_date: str,
     limit: int = 1000,
-    offset: int = 0,
 ) -> list[dict]:
-    """Fetch EOD stock data from MarketStack API within a date range.
-    :Args:
-        api_key (str): MarketStack API key
-        tickers (list[str]): List of stock symbols
-        start_date (str): Start date in YYYY-MM-DD format
-        end_date (str): End date in YYYY-MM-DD format
-        limit (int): Number of results per page
-        offset (int): Pagination offset
-    :Returns:
-        list[dict]: List of EOD stock data records
-
-    :Examples:
-    >>> fetch_eod_with_date(
-    ...     api_key="your_api_key_here",
-    ...     tickers=["AAPL", "MSFT"],
-    ...     start_date="2025-01-01",
-    ...     end_date="2025-01-10",
-    ...     limit=1000,
-    ...     offset=0,
-    ... )
-    [  # Example output
-        {"date": "2025-01-02",
-         "symbol": "AAPL",
-         "open": 150.0,
-         "high": 155.0,
-         "low": 149.0,
-         "close": 154.0,
-         "volume": 1000000,
-         "adj_close": 154.0,
-        },
-    ]
     """
-    api_url = f"{API_URL}/eod"  # EOD endpoint
+    Fetch all EOD data for a single ticker, handling pagination automatically.
 
-    # Define your parameters for the API request
-    params = {
-        "access_key": api_key,
-        "symbols": ','.join(tickers),  # Stock symbols
-        "limit": limit,  # Number of results per page
-        "offset": offset,  # Pagination offset (Number of results to skip)
-        "sort": "ASC",  # Sort order
-        "date_from": start_date,  # Start date
-        "date_to": end_date,  # End date
-    }
+    Args:
+        api_key (str): MarketStack API key.
+        symbol (str): Stock ticker symbol (e.g., 'AAPL').
+        start_date (str): Start date in 'YYYY-MM-DD' format.
+        end_date (str): End date in 'YYYY-MM-DD' format.
+        limit (int, optional): Number of records per API call. Defaults to 1000.
 
-    # Make the API call
-    response = requests.get(api_url, params=params)
+    Returns:
+        list[dict]: A list of dictionaries containing the raw EOD data.
 
-    if response.status_code != 200:
-        logger.error(f"API call failed: {response.status_code} - {response.text}")
-        raise Exception(f"API request failed: {response.status_code}")
+    Examples:
+        >>> data = fetch_ticker_data("my_key", "AAPL", "2023-01-01", "2023-01-05")
+        >>> print(len(data))
+        4
+    """
+    api_url = f"{API_URL}/eod"
+    all_data = []
+    offset = 0
 
-    data = response.json()
-    logger.info(f"Successfully fetched {len(data.get('data', []))} records")
-    return data["data"]
+    logger.info(f"Fetching data for {symbol}...")
+
+    while True:
+        params = {
+            "access_key": api_key,
+            "symbols": symbol,
+            "limit": limit,
+            "offset": offset,
+            "sort": "ASC",
+            "date_from": start_date,
+            "date_to": end_date,
+        }
+
+        try:
+            response = requests.get(api_url, params=params)
+
+            if response.status_code == 429:
+                logger.warning("Rate limit hit. Waiting 1 second...")
+                time.sleep(1)
+                continue
+
+            if response.status_code != 200:
+                logger.error(
+                    f"API call failed: {response.status_code} - {response.text}"
+                )
+                break
+
+            data = response.json()
+            batch_data = data.get("data", [])
+
+            if not batch_data:
+                logger.info(f"No more data found for {symbol}.")
+                break
+
+            all_data.extend(batch_data)
+
+            pagination = data.get("pagination", {})
+            total = pagination.get("total", 0)
+
+            logger.info(f"Fetched {len(all_data)}/{total} records for {symbol}")
+
+            if len(all_data) >= total:
+                break
+
+            offset += limit
+            # small sleep to be nice to the API
+            time.sleep(0.2)
+
+        except Exception as e:
+            logger.error(f"Error fetching {symbol}: {e}")
+            break
+
+    return all_data
 
 
 def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
-    """Process raw stock data into a pandas DataFrame.
-
-    :Args:
-        stock_data (list[dict]): Raw stock data from API
-
-    :Returns:
-        pd.DataFrame: Processed DataFrame with selected columns
-
-    :Examples:
-    >>> stock_data = [
-    ...     {"date": "2025-01-02",
-    ...      "symbol": "AAPL",
-    ...      "open": 150.0,
-    ...      "high": 155.0,
-    ...      "low": 149.0,
-    ...      "close": 154.0,
-    ...      "volume": 1000000,
-    ...      "adj_close": 154.0,
-    ...     },
-    ... ]
-    >>> df = process_dataframe(stock_data)
-    >>> df.head()
-            date symbol   open   high    low  close   volume  adj_close
-    0 2025-01-02   AAPL  150.0  155.0  149.0  154.0  1000000      154.0
     """
+    Process raw stock data into a pandas DataFrame.
+
+    Converts date columns to datetime objects, adds metadata columns ('pulled_at', 'source'),
+    and filters the DataFrame to keep only relevant columns.
+
+    Args:
+        stock_data (list[dict]): Raw stock data list returned from the API.
+
+    Returns:
+        pd.DataFrame: Processed DataFrame with standardized columns.
+
+    Examples:
+        >>> raw_data = [{"date": "2023-01-01", "symbol": "AAPL", "close": 150.0}]
+        >>> df = process_dataframe(raw_data)
+        >>> print(df.columns.tolist())
+        ['date', 'symbol', 'close', 'pulled_at', 'source']
+    """
+    if not stock_data:
+        logger.warning("No data to process.")
+        return pd.DataFrame()
+
     df = pd.DataFrame(stock_data)
-    df["date"] = pd.to_datetime(df["date"])
-    df = df[["date", "symbol", "open", "high", "low", "close", "volume", "adj_close"]]
-    df = df.sort_values(["date", "symbol"]).reset_index(drop=True)
+
+    # Ensure date is datetime
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+
+    # Add metadata columns
+    df["pulled_at"] = pd.Timestamp.now()
+    df["source"] = "marketstack_api"
+
+    cols = [
+        "date",
+        "symbol",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "adj_close",
+        "pulled_at",
+        "source",
+    ]
+
+    # Only keep columns that actually exist in the response
+    existing_cols = [c for c in cols if c in df.columns]
+    df = df[existing_cols]
+
+    if "date" in df.columns and "symbol" in df.columns:
+        df = df.sort_values(["date", "symbol"]).reset_index(drop=True)
 
     return df
 
 
 def save_to_parquet(df: pd.DataFrame, filename: str) -> None:
-    """Save DataFrame to a Parquet file.
+    """
+    Save DataFrame to a Parquet file in the data/raw directory.
 
-    :Args:
-        df (pd.DataFrame): DataFrame to save
-        filename (str): Output Parquet filename
+    Args:
+        df (pd.DataFrame): The DataFrame to save.
+        filename (str): The name of the output file (e.g., 'AAPL_eod.parquet').
 
-    :Returns:
+    Returns:
         None
 
-    :Examples:
-    >>> df = pd.DataFrame({
-    ...     "date": ["2025-01-02"],
-    ...     "symbol": ["AAPL"],
-    ...     "open": [150.0],
-    ...     "high": [155.0],
-    ...     "low": [149.0],
-    ...     "close": [154.0],
-    ...     "volume": [1000000],
-    ...     "adj_close": [154.0],
-    ... })
-    >>> save_to_parquet(df, "eod_data.parquet")
-    Saved to data/raw/eod_data.parquet
+    Examples:
+        >>> df = pd.DataFrame({"col": [1, 2]})
+        >>> save_to_parquet(df, "test_data.parquet")
+        # Saves to PROJECT_ROOT/data/raw/test_data.parquet
     """
-    output_path = Path("data/raw") / filename
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if df.empty:
+        logger.warning(f"Skipping save for {filename}: DataFrame is empty.")
+        return
 
+    # Output path to save parquet file
+    output_path = PROJECT_ROOT / "data" / "raw" / filename
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(output_path, index=False)
+    logger.info(f"Saved {len(df)} rows to {output_path}")
+
+
+def combine_and_save_to_parquet(path: str | Path | None = None) -> None:
+    """
+    Read all parquet files from a directory, combine them, and save to processed folder.
+
+    Args:
+        path (str | Path | None, optional): Input directory containing raw parquet files.
+            Defaults to PROJECT_ROOT/data/raw.
+
+    Returns:
+        None
+
+    Examples:
+        >>> combine_and_save_to_parquet()
+        # Reads all .parquet files in data/raw, combines them,
+        # and saves 'combined_eod.parquet' in data/processed.
+    """
+    # Determine Input Directory
+    if path is None:
+        input_dir = PROJECT_ROOT / "data" / "raw"
+    else:
+        input_dir = Path(path)
+
+    if not input_dir.exists():
+        logger.warning(f"Input directory {input_dir} does not exist.")
+        return
+
+    # Find all parquet files
+    parquet_files = [
+        f for f in input_dir.glob("*.parquet") if "combined_eod" not in f.name
+    ]
+
+    if not parquet_files:
+        logger.warning(f"No .parquet files found in {input_dir}")
+        return
+
+    logger.info(f"Found {len(parquet_files)} files in {input_dir}. Combining...")
+
+    # Read and Combine
+    dfs = []
+    for file in parquet_files:
+        try:
+            df = pd.read_parquet(file)
+            if not df.empty:
+                dfs.append(df)
+        except Exception as e:
+            logger.error(f"Failed to read {file}: {e}")
+
+    if not dfs:
+        logger.warning("No valid dataframes to combine.")
+        return
+
+    combined_df = pd.concat(dfs, ignore_index=True)
+
+    # Save to Processed
+    output_dir = PROJECT_ROOT / "data" / "processed"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / "combined_eod.parquet"
+    combined_df.to_parquet(output_path, index=False)
+
+    logger.info(f"Successfully combined {len(combined_df)} rows from {len(dfs)} files.")
     logger.info(f"Saved to {output_path}")
 
 
@@ -173,36 +263,43 @@ def main():
         help="List of stock symbols",
     )
     parser.add_argument(
-        "--start_date", default="2025-01-01", help="Start date in YYYY-MM-DD"
+        "--start_date", default="2012-05-18", help="Start date in YYYY-MM-DD"
     )
     parser.add_argument(
-        "--end_date", default="2025-01-10", help="End date in YYYY-MM-DD"
+        "--end_date",
+        default=f"{(datetime.now() - timedelta(1)).strftime('%Y-%m-%d')}",
+        help="End date in YYYY-MM-DD",
     )
-    parser.add_argument(
-        "--output", default="eod_data.parquet", help="Output Parquet filename"
-    )
-    parser.add_argument(
-        "--limit", type=int, default=1000, help="Number of results per page"
-    )
-    parser.add_argument("--offset", type=int, default=0, help="Pagination offset")
 
     args = parser.parse_args()
 
     try:
-        api_key = load_config()
-        stock_data = fetch_eod_with_date(
-            api_key=api_key,
-            tickers=args.tickers,
-            start_date=args.start_date,
-            end_date=args.end_date,
-            limit=args.limit,
-            offset=args.offset,
-        )
-        df = process_dataframe(stock_data)
-        save_to_parquet(df, args.output)
+        api_key = settings.marketstack_api_key
+
+        if not api_key:
+            raise ValueError("MARKETSTACK_API_KEY not found in configuration.")
+
+        for symbol in args.tickers:
+            # 1. Fetch all pages for this symbol
+            raw_data = fetch_ticker_data(
+                api_key=api_key,
+                symbol=symbol,
+                start_date=args.start_date,
+                end_date=args.end_date,
+            )
+
+            # 2. Process
+            df = process_dataframe(raw_data)
+
+            # 3. Save individually
+            filename = f"{symbol}_eod.parquet"
+            save_to_parquet(df, filename)
+
+        # 4. Combine all downloaded files
+        combine_and_save_to_parquet()
 
     except Exception as error:
-        logger.error(f"Error occurred: {error}")
+        logger.error(f"Critical error: {error}")
         raise
 
 

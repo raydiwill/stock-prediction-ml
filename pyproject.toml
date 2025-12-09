@@ -36,7 +36,7 @@ dependencies = [
 sources = ["src"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["stock_prediction_ml"]
+packages = ["src/stock_prediction_ml"]
 
 [dependency-groups]
 dev = [
@@ -53,9 +53,6 @@ pythonpath = ["src"]
 filterwarnings = [
     "ignore::marshmallow.warnings.ChangedInMarshmallow4Warning",
 ]
-
-[tool.setuptools.packages.find]
-where = ["src"]
 
 [tool.ruff.lint]
 select = ["E","F","I","UP"]
