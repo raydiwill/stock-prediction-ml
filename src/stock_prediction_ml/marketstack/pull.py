@@ -29,6 +29,21 @@ def fetch_ticker_data(
 ) -> list[dict]:
     """
     Fetch all EOD data for a single ticker, handling pagination automatically.
+
+    Args:
+        api_key (str): MarketStack API key.
+        symbol (str): Stock ticker symbol (e.g., 'AAPL').
+        start_date (str): Start date in 'YYYY-MM-DD' format.
+        end_date (str): End date in 'YYYY-MM-DD' format.
+        limit (int, optional): Number of records per API call. Defaults to 1000.
+
+    Returns:
+        list[dict]: A list of dictionaries containing the raw EOD data.
+
+    Examples:
+        >>> data = fetch_ticker_data("my_key", "AAPL", "2023-01-01", "2023-01-05")
+        >>> print(len(data))
+        4
     """
     api_url = f"{API_URL}/eod"
     all_data = []
@@ -90,7 +105,24 @@ def fetch_ticker_data(
 
 
 def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
-    """Process raw stock data into a pandas DataFrame."""
+    """
+    Process raw stock data into a pandas DataFrame.
+
+    Converts date columns to datetime objects, adds metadata columns ('pulled_at', 'source'),
+    and filters the DataFrame to keep only relevant columns.
+
+    Args:
+        stock_data (list[dict]): Raw stock data list returned from the API.
+
+    Returns:
+        pd.DataFrame: Processed DataFrame with standardized columns.
+
+    Examples:
+        >>> raw_data = [{"date": "2023-01-01", "symbol": "AAPL", "close": 150.0}]
+        >>> df = process_dataframe(raw_data)
+        >>> print(df.columns.tolist())
+        ['date', 'symbol', 'close', 'pulled_at', 'source']
+    """
     if not stock_data:
         logger.warning("No data to process.")
         return pd.DataFrame()
@@ -129,7 +161,21 @@ def process_dataframe(stock_data: list[dict]) -> pd.DataFrame:
 
 
 def save_to_parquet(df: pd.DataFrame, filename: str) -> None:
-    """Save DataFrame to a Parquet file."""
+    """
+    Save DataFrame to a Parquet file in the data/raw directory.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to save.
+        filename (str): The name of the output file (e.g., 'AAPL_eod.parquet').
+
+    Returns:
+        None
+
+    Examples:
+        >>> df = pd.DataFrame({"col": [1, 2]})
+        >>> save_to_parquet(df, "test_data.parquet")
+        # Saves to PROJECT_ROOT/data/raw/test_data.parquet
+    """
     if df.empty:
         logger.warning(f"Skipping save for {filename}: DataFrame is empty.")
         return
@@ -145,6 +191,18 @@ def save_to_parquet(df: pd.DataFrame, filename: str) -> None:
 def combine_and_save_to_parquet(path: str | Path | None = None) -> None:
     """
     Read all parquet files from a directory, combine them, and save to processed folder.
+
+    Args:
+        path (str | Path | None, optional): Input directory containing raw parquet files.
+            Defaults to PROJECT_ROOT/data/raw.
+
+    Returns:
+        None
+
+    Examples:
+        >>> combine_and_save_to_parquet()
+        # Reads all .parquet files in data/raw, combines them,
+        # and saves 'combined_eod.parquet' in data/processed.
     """
     # Determine Input Directory
     if path is None:
