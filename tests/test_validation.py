@@ -16,14 +16,16 @@ from stock_prediction_ml.data_validation.validation import (
 @pytest.fixture
 def fake_stock_data():
     return {
-        "date": ["2023-01-01", "2023-01-02"],
+        "date": [pd.Timestamp("2023-01-01"), pd.Timestamp("2023-01-02")],
         "symbol": ["AAPL", "GOOGL"],
         "open": [150.0, 2800.0],
         "high": [155.0, 2850.0],
         "low": [149.0, 2790.0],
         "close": [154.0, 2840.0],
-        "volume": [1000000, 1500000],
+        "volume": [1000000.0, 1500000.0],
         "adj_close": [154.0, 2840.0],
+        "pulled_at": [pd.Timestamp.now(), pd.Timestamp.now()],
+        "source": ["marketstack_api", "marketstack_api"],
     }
 
 
@@ -50,19 +52,16 @@ def test_add_dataframe_asset_returns_dataframe_asset():
     assert isinstance(data_asset, gx.datasource.fluent.pandas_datasource.DataFrameAsset)
 
 
-def test_get_batch_returns_batch(tmp_path, fake_stock_data):
+def test_get_batch_returns_batch(fake_stock_data):
     context = get_context()
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
     batch_definition = get_batch_definition(data_asset)
 
-    # Use fake_stock_data directly (it's already the dict)
+    # Pass DataFrame directly, not a file path
     df = pd.DataFrame(fake_stock_data)
-
-    parquet_path = tmp_path / "sample.parquet"
-    df.to_parquet(parquet_path)
-
-    batch = get_batch(parquet_path, batch_definition)
+    
+    batch = get_batch(df, batch_definition)
     assert isinstance(batch, gx.datasource.fluent.interfaces.Batch)
 
 
@@ -100,19 +99,16 @@ def test_suite_has_expected_expectations(expectation):
     assert expectation in expectation_types
 
 
-def test_validate_batch_returns_validation_result(tmp_path, fake_stock_data):
+def test_validate_batch_returns_validation_result(fake_stock_data):
     context = get_context()
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
     batch_definition = get_batch_definition(data_asset)
 
-    # Use fake_stock_data directly (it's already the dict)
+    # Pass DataFrame directly
     df = pd.DataFrame(fake_stock_data)
 
-    parquet_path = tmp_path / "sample.parquet"
-    df.to_parquet(parquet_path)
-
-    batch = get_batch(parquet_path, batch_definition)
+    batch = get_batch(df, batch_definition)
     suite = build_expectation_suite()
     validation_result = validate_batch(batch, suite)
 
