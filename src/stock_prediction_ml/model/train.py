@@ -13,6 +13,8 @@ from mlflow.models import infer_signature
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
+from src.stock_prediction_ml.config.settings import settings
+
 # Configure enhanced logging with timestamps and better formatting
 logging.basicConfig(
     level=logging.INFO,
@@ -539,8 +541,8 @@ def main(config_path: str | Path | None = None):
 
     log_section("Starting MLflow experiment")
     # Extract MLflow settings from nested dict; fall back to defaults
+    tracking_uri = settings.mlflow_tracking_uri
     mlflow_config = config.get("mlflow", {})
-    tracking_uri = mlflow_config.get("tracking_uri", "file:./mlruns")
     experiment_name = mlflow_config.get("experiment_name", "stock_prediction")
     run_name = mlflow_config.get("run_name", None)
 

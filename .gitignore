@@ -19,3 +19,6 @@ wheels/
 
 # Data folder
 data/
+
+# MLflow runs folder
+mlruns/
