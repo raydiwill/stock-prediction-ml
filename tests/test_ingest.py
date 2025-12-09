@@ -93,7 +93,9 @@ def make_mock_session(mocker):
     session.add = Mock()
 
     # This simulates calling get_db() and getting a generator back
-    mocker.patch("stock_prediction_ml.db.ingest.get_db", return_value=(x for x in [session]))
+    mocker.patch(
+        "stock_prediction_ml.db.ingest.get_db", return_value=(x for x in [session])
+    )
 
     return session
 
@@ -193,6 +195,7 @@ def test_input_hashing_different_data_produces_different_hash(sample_normalized_
 
 
 # ========== Test: map_to_db_dict ==========
+
 
 def test_map_to_db_dict_converts_types(sample_normalized_row):
     """
@@ -307,6 +310,10 @@ def test_ingest_data_into_db_returns_summary(mocker):
             "close": [152.0, 303.0, 2820.0],
             "volume": [1000000, 2000000, 1500000],
             "adj_close": [152.0, 303.0, 2820.0],
+            "pulled_at": pd.Timestamp.now(),
+            "parquet_path": "test.parquet",
+            "validated": True,
+            "source": "marketstack_api",
         }
     )
 
@@ -335,6 +342,10 @@ def test_ingest_data_into_db_handles_duplicates(mocker):
             "close": [152.0, 303.0, 2820.0, 3320.0, 920.0],
             "volume": [1000000] * 5,
             "adj_close": [152.0, 303.0, 2820.0, 3320.0, 920.0],
+            "pulled_at": pd.Timestamp.now(),
+            "parquet_path": "test.parquet",
+            "validated": True,
+            "source": "marketstack_api",
         }
     )
 
