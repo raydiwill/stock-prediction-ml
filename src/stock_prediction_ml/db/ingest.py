@@ -12,7 +12,8 @@ from stock_prediction_ml.db import models
 from stock_prediction_ml.db.session import get_db
 
 TARGET_TABLE = models.RawStockData
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
