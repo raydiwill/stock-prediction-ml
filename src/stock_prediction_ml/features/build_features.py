@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
-def read_raw_data(
-    folder_path: str | Path | None = None,
-    column_to_keep: list[str] = [
+def read_validated_data(
+    file_path: str | Path | None = None,
+    columns_to_keep: list[str] = [
         "date",
         "symbol",
         "open",
@@ -29,85 +29,37 @@ def read_raw_data(
     ],
 ) -> pd.DataFrame:
     """
-    Load and combine Parquet files into a single DataFrame.
-
-    Parameters
-    ----------
-    folder_path : str | Path | None, optional
-        Directory containing the Parquet files.
-        If None, the default project data/raw folder is used.
-    column_to_keep : list[str], optional
-        Columns to retain in the final DataFrame.
-
-    Returns
-    -------
-    pd.DataFrame
-        Combined DataFrame with only the selected columns.
-    """
-    if folder_path is None:
-        folder = PROJECT_ROOT / "data" / "raw"
-    else:
-        folder = Path(folder_path)
-
-    logger.info(f"Reading raw data from folder: {folder}")
-    files = list(folder.glob("*.parquet"))
-
-    if not files:
-        logger.error(f"No Parquet files found in {folder}")
-        raise ValueError(f"No Parquet files found in {folder}")
-
-    logger.info(f"Found {len(files)} Parquet file(s)")
-    logger.info(f"Files to read: {[f.name for f in files]}")
-
-    df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-    logger.info(f"Combined data shape: {df.shape}")
-
-    df["date"] = pd.to_datetime(df["date"], utc=True)
-    logger.info(
-        f"Date column converted to datetime. Date range: {df['date'].min()} to {df['date'].max()}"
-    )
-    logger.info(f"Filtered to {len(column_to_keep)} columns: {column_to_keep}")
-
-    return df[column_to_keep]
-
-
-def save_combined_data(df: pd.DataFrame, file_path: str | Path | None = None) -> None:
-    """Save combined raw data to a Parquet file.
-
-    Args:
-        df (pd.DataFrame): Combined DataFrame to save.
-        file_path (str | Path | None): Path to the file.
-            If None, the default project data/processed folder is used.
-    """
-    if file_path is None:
-        file_path = PROJECT_ROOT / "data" / "processed" / "combined_eod.parquet"
-    else:
-        file_path = Path(file_path)
-
-    logger.info(f"Saving combined data to: {file_path}")
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(file_path, index=False)
-    logger.info(f"Successfully saved {len(df)} rows to {file_path}")
-
-
-def read_combined_data(file_path: str | Path | None = None) -> pd.DataFrame:
-    """Read combined raw data from a Parquet file.
+    Read validated data from a Parquet file.
 
     Args:
         file_path (str | Path | None): Path to the Parquet file.
+            Defaults to data/processed/validated_data.parquet.
+        columns_to_keep (list[str], optional): Columns to retain.
 
     Returns:
         pd.DataFrame: DataFrame read from the Parquet file.
     """
     if file_path is None:
-        file_path = PROJECT_ROOT / "data" / "processed" / "combined_eod.parquet"
+        file_path = PROJECT_ROOT / "data" / "processed" / "validated_data.parquet"
     else:
         file_path = Path(file_path)
 
-    logger.info(f"Reading combined data from: {file_path}")
+    logger.info(f"Reading validated data from: {file_path}")
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
     df = pd.read_parquet(file_path)
     logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
-    logger.info(f"Columns: {df.columns.tolist()}")
+
+    # Ensure date is datetime
+    df["date"] = pd.to_datetime(df["date"], utc=True)
+
+    # Filter columns if specified
+    if columns_to_keep:
+        existing_cols = [c for c in columns_to_keep if c in df.columns]
+        df = df[existing_cols]
+        logger.info(f"Filtered to {len(df.columns)} columns: {df.columns.tolist()}")
 
     return df
 
@@ -436,13 +388,13 @@ def save_feature_data(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Build features for stock prediction from raw EOD data."
+        description="Build features for stock prediction from validated data."
     )
     parser.add_argument(
-        "--input_folder",
+        "--input_file",
         type=str,
         default=None,
-        help="Input folder containing raw Parquet files.",
+        help="Path to the validated Parquet file (optional).",
     )
     parser.add_argument(
         "--output_filename",
@@ -454,17 +406,14 @@ def main():
     logger.info("=== Feature Engineering Pipeline Started ===")
 
     try:
-        df = read_raw_data(args.input_folder)
-        logger.info("Raw data read successfully.")
+        # 1. Read Validated Data
+        df = read_validated_data(args.input_file)
 
-        save_combined_data(df)
-        logger.info("Combined raw data saved successfully.")
-
-        df = read_combined_data()
+        # 2. Create Features
         df_features = create_features(df)
 
+        # 3. Save Features
         save_feature_data(df_features, args.output_filename)
-        logger.info("Feature data saved successfully.")
 
         logger.info("=== Feature Engineering Pipeline Completed Successfully ===")
 
