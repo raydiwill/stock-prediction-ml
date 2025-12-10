@@ -1,5 +1,4 @@
 import json
-from pathlib import PosixPath
 
 import joblib
 import numpy as np
@@ -17,7 +16,6 @@ from stock_prediction_ml.model.train import (
     load_config,
     load_raw_training_data,
     load_selected_features,
-    save_model,
     split_data_train_test,
     train_model,
 )
@@ -88,21 +86,23 @@ def train_val_test_split(raw_df):
 
 
 @pytest.fixture
-def fitted_encoder(train_test_split, tmp_path):
-    """Fit and save encoder, return tmp_path."""
+def fitted_encoder_tuple(train_test_split, tmp_path):
+    """Fit and save encoder, return (encoder_object, meta_dir)."""
     train, _ = train_test_split
-    fit_and_save_encoder(train, meta_dir=tmp_path)
-    return tmp_path
+    encoder = fit_and_save_encoder(train, meta_dir=tmp_path)
+    return encoder, tmp_path
 
 
 @pytest.fixture
-def encoded_data(train_val_test_split, fitted_encoder):
-    """Return encoded train, val, test DataFrames."""
+def encoded_data(train_val_test_split, fitted_encoder_tuple):
+    """Return encoded train, val, test DataFrames using in-memory encoder."""
     train, val, test = train_val_test_split
+    encoder, meta_dir = fitted_encoder_tuple
 
-    train_encoded = load_and_transform_with_encoder(train, meta_dir=fitted_encoder)
-    val_encoded = load_and_transform_with_encoder(val, meta_dir=fitted_encoder)
-    test_encoded = load_and_transform_with_encoder(test, meta_dir=fitted_encoder)
+    # Test passing the encoder object directly
+    train_encoded = load_and_transform_with_encoder(train, encoder=encoder)
+    val_encoded = load_and_transform_with_encoder(val, encoder=encoder)
+    test_encoded = load_and_transform_with_encoder(test, encoder=encoder)
 
     return train_encoded, val_encoded, test_encoded
 
@@ -133,13 +133,6 @@ def trained_model(X_y_data, config):
         X_train, y_train, X_val, y_val, params=config.get("model_params", {})
     )
     return model, info
-
-
-@pytest.fixture
-def saved_model_path(trained_model, tmp_path):
-    """Save model once and return its Path."""
-    model, _ = trained_model
-    return save_model(model, tmp_path)
 
 
 # ==================== TESTS ====================
@@ -239,15 +232,19 @@ def test_split_data_train_test_preserves_total_row_count(train_test_split, raw_d
     assert len(raw_df) == len(train) + len(test)
 
 
-def test_fit_and_save_encoder_creates_pkl_file(fitted_encoder):
-    """Should create 'ohe.pkl' file in the specified meta_dir."""
-    pkl_file = fitted_encoder / "ohe.pkl"
-    assert pkl_file.exists()
+def test_fit_and_save_encoder_returns_encoder_and_saves_file(fitted_encoder_tuple):
+    """Should return encoder object AND create 'ohe.pkl' file."""
+    encoder, meta_dir = fitted_encoder_tuple
+    pkl_file = meta_dir / "ohe.pkl"
 
-    with open(pkl_file, "rb") as f:
-        encoder = joblib.load(f)
-
+    # Check return object
     assert isinstance(encoder, OneHotEncoder)
+
+    # Check file persistence
+    assert pkl_file.exists()
+    with open(pkl_file, "rb") as f:
+        loaded_encoder = joblib.load(f)
+    assert isinstance(loaded_encoder, OneHotEncoder)
 
 
 def test_load_and_transform_with_encoder_adds_ohe_columns(encoded_data):
@@ -334,33 +331,24 @@ def test_evaluate_model_respects_prefix_parameter(trained_model, X_y_data):
     assert "test_roc_auc" in test_metrics.keys()
 
 
-def test_save_model_creates_cbm_file(saved_model_path):
-    """Should create a .cbm model file in the specified directory."""
-    assert saved_model_path.exists()
-
-
-def test_save_model_returns_path_object(saved_model_path):
-    """Should return a Path object pointing to the saved model."""
-    assert isinstance(saved_model_path, PosixPath)
-
-
-def test_save_model_file_is_not_empty(saved_model_path):
-    """Saved model file should have non-zero size."""
-    assert saved_model_path.stat().st_size > 0
-
-
-def test_save_model_file_can_be_loaded(saved_model_path):
-    """Saved model should be loadable with CatBoost.load_model()."""
-    model = CatBoostClassifier()
-    model.load_model(saved_model_path)
-    assert isinstance(model, CatBoostClassifier)
-    assert getattr(model, "get_best_iteration", None) is not None
-
-
-def test_save_model_with_custom_name(trained_model, tmp_path):
-    """Should save model with custom name (e.g., 'my_model.cbm')."""
+def test_trained_model_is_serializable(trained_model, tmp_path):
+    """
+    Ensure the trained model object is valid and can be saved/loaded.
+    This replaces the old save_model tests and acts as a sanity check
+    before MLflow logging.
+    """
     model, _ = trained_model
-    model_path = save_model(model, tmp_path, "custom_name")
+    save_path = tmp_path / "temp_model.cbm"
 
-    assert model_path.exists()
-    assert str(model_path).endswith("custom_name.cbm")
+    # Try saving using CatBoost's native method
+    model.save_model(save_path)
+
+    assert save_path.exists()
+    assert save_path.stat().st_size > 0
+
+    # Try loading it back
+    loaded_model = CatBoostClassifier()
+    loaded_model.load_model(save_path)
+
+    # Check if it's the same model (e.g. same tree count)
+    assert loaded_model.tree_count_ == model.tree_count_

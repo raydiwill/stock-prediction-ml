@@ -172,7 +172,7 @@ def fit_and_save_encoder(
     train_df: pd.DataFrame,
     categorical_column: str = "symbol",
     meta_dir: str | Path | None = None,
-):
+) -> OneHotEncoder:
     """Fit and persist a OneHotEncoder using the training subset only.
 
     Args:
@@ -182,12 +182,7 @@ def fit_and_save_encoder(
             If None, defaults to data/meta.
 
     Returns:
-        Path: Path to the saved encoder (.pkl).
-
-    Example:
-        >>> path = fit_and_save_encoder(train_df, categorical_column="symbol", meta_dir="data/meta")
-        >>> path.name
-        'ohe.pkl'
+        OneHotEncoder: The fitted encoder object.
     """
     if meta_dir is None:
         meta_dir = PROJECT_ROOT / "data" / "meta"
@@ -207,12 +202,15 @@ def fit_and_save_encoder(
     joblib.dump(encoder, encoder_path)
     logger.info(f"Saved OneHotEncoder to {encoder_path}")
 
+    return encoder
+
 
 def load_and_transform_with_encoder(
     df: pd.DataFrame,
     categorical_column: str = "symbol",
     meta_dir: str | Path | None = None,
     encoder_name: str | None = None,
+    encoder: OneHotEncoder | None = None,
 ):
     """Apply a persisted OneHotEncoder to a DataFrame and append encoded columns.
 
@@ -221,6 +219,8 @@ def load_and_transform_with_encoder(
         categorical_column (str): Column to encode (default 'symbol').
         meta_dir (str | Path | None): Directory containing encoder .pkl; defaults to data/meta.
         encoder_name (str | None): Custom encoder file name (with/without .pkl).
+        encoder (OneHotEncoder | None): Optional in-memory encoder. 
+                                        If provided, skips loading from disk.
 
     Returns:
         pd.DataFrame: DataFrame with original column dropped and OHE columns added (sorted columns).
@@ -229,18 +229,21 @@ def load_and_transform_with_encoder(
         >>> df_enc = load_and_transform_with_encoder(df, meta_dir="data/meta")
         >>> [c for c in df_enc.columns if c.startswith('symbol_')][:3]
     """
-    if meta_dir is None:
-        meta_dir = PROJECT_ROOT / "data" / "meta"
-    meta_dir = Path(meta_dir)
+    # Use the in-memory encoder if provided, otherwise load from disk
+    if encoder is None:
+        if meta_dir is None:
+            meta_dir = PROJECT_ROOT / "data" / "meta"
+        meta_dir = Path(meta_dir)
 
-    if encoder_name is None:
-        encoder_path = meta_dir / "ohe.pkl"
-    else:
-        encoder_path = meta_dir / (
-            encoder_name if encoder_name.endswith(".pkl") else encoder_name + ".pkl"
-        )
+        if encoder_name is None:
+            encoder_path = meta_dir / "ohe.pkl"
+        else:
+            encoder_path = meta_dir / (
+                encoder_name if encoder_name.endswith(".pkl") else encoder_name + ".pkl"
+            )
 
-    encoder = joblib.load(encoder_path)
+        encoder = joblib.load(encoder_path)
+
     matrix_encoded = encoder.transform(df[[categorical_column]])
     symbol_columns = encoder.get_feature_names_out([categorical_column])
     df_encoded = pd.DataFrame(matrix_encoded, columns=symbol_columns, index=df.index)
@@ -358,37 +361,6 @@ def evaluate_model(model, X_test, y_test, prefix: str = "test") -> dict[str, flo
     return metrics
 
 
-def save_model(
-    model, model_dir: str | Path | None = None, model_name: str = "catboost_model"
-) -> Path:
-    """Save CatBoost model to native .cbm format and return the file path.
-
-    Args:
-        model (CatBoostClassifier): Trained model to persist.
-        model_dir (str | Path | None): Output directory; defaults to models/.
-        model_name (str): Base filename without extension.
-
-    Returns:
-        Path: Path to the saved .cbm file.
-
-    Example:
-        >>> path = save_model(model, model_dir="models", model_name="stock_clf")
-        >>> path.suffix
-        '.cbm'
-    """
-    if model_dir is None:
-        model_dir = PROJECT_ROOT / "models"
-    model_dir = Path(model_dir)
-    model_dir.mkdir(parents=True, exist_ok=True)
-
-    model_path = model_dir / f"{model_name}.cbm"
-    model.save_model(str(model_path))
-    logger.info(
-        f"Saved model to {model_path} ({model_path.stat().st_size/1024:.1f} KB)"
-    )
-    return model_path
-
-
 def plot_feature_importance(model, feature_names, top_n=20, save_path=None):
     """Plot and save feature importance from trained CatBoost model.
 
@@ -424,9 +396,11 @@ def plot_feature_importance(model, feature_names, top_n=20, save_path=None):
     plt.tight_layout()
 
     if save_path is None:
-        save_path = Path("docs/images/feature_importance.png")
-    else:
-        save_path = Path(save_path)
+        save_path = PROJECT_ROOT / "docs" / "images"
+    
+    # Add name
+    save_path = save_path / "feature_importance.png"
+    save_path = Path(save_path)
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -457,9 +431,11 @@ def plot_confusion_matrix(y_true, y_pred, save_path=None):
     plt.tight_layout()
 
     if save_path is None:
-        save_path = Path("docs/images/confusion_matrix.png")
-    else:
-        save_path = Path(save_path)
+        save_path = PROJECT_ROOT / "docs" / "images"
+    
+    # Add name
+    save_path = save_path / "confusion_matrix.png"
+    save_path = Path(save_path)
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -499,9 +475,11 @@ def plot_roc_curve(y_true, y_proba, save_path=None):
     plt.tight_layout()
 
     if save_path is None:
-        save_path = Path("docs/images/roc_curve.png")
-    else:
-        save_path = Path(save_path)
+        save_path = PROJECT_ROOT / "docs" / "images"
+    
+    # Add name
+    save_path = save_path / "roc_curve.png"
+    save_path = Path(save_path)
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -567,10 +545,11 @@ def main(config_path: str | Path | None = None):
         train_df, val_df = split_data_train_test(train_val_df, test_size=0.5)
 
         log_section("Encoding categorical features")
-        fit_and_save_encoder(train_df, meta_dir=config.get("meta_dir"))
+        encoder = fit_and_save_encoder(train_df, meta_dir=config.get("meta_dir"))
         mlflow.log_artifact(
             Path(config.get("meta_dir")) / "ohe.pkl", artifact_path="meta"
         )
+
         mlflow.log_artifact(
             Path(config.get("meta_dir")) / "selected_features.json",
             artifact_path="meta",
@@ -578,13 +557,13 @@ def main(config_path: str | Path | None = None):
 
         # Apply the same encoder to all splits for consistent feature space.
         train_df = load_and_transform_with_encoder(
-            train_df, meta_dir=config.get("meta_dir")
+            train_df, meta_dir=config.get("meta_dir"), encoder=encoder
         )
         val_df = load_and_transform_with_encoder(
-            val_df, meta_dir=config.get("meta_dir")
+            val_df, meta_dir=config.get("meta_dir"), encoder=encoder
         )
         test_df = load_and_transform_with_encoder(
-            test_df, meta_dir=config.get("meta_dir")
+            test_df, meta_dir=config.get("meta_dir"), encoder=encoder
         )
 
         X_train, y_train = build_X_y(train_df, selected_features, config["target"])
@@ -622,19 +601,29 @@ def main(config_path: str | Path | None = None):
         mlflow.log_artifact(str(roc_plot), artifact_path="diagnostics")
 
         log_section("Saving model")
-        model_path = save_model(model, model_dir=config.get("model_dir"))
-        mlflow.log_artifact(str(model_path), artifact_path="model")
-
         signature = infer_signature(X_train, model.predict(X_train))
         mlflow.catboost.log_model(
-            model, 
-            name="catboost_model", 
-            signature=signature, 
-            input_example=X_train[:5]
+            model, name="catboost_model", signature=signature, input_example=X_train[:5]
         )
 
         log_section("Training complete")
         logger.info(f"View results: mlflow ui --backend-store-uri {tracking_uri}")
+
+    # Clean up resources
+    # 1. Delete the OneHotEncoder pickle
+    meta_dir = Path(config.get("meta_dir"))
+    if (meta_dir / "ohe.pkl").exists():
+        (meta_dir / "ohe.pkl").unlink()
+
+    # 2. Delete all generated images in docs/images
+    images_dir = PROJECT_ROOT / "docs" / "images"
+    if images_dir.exists():
+        for img_file in images_dir.glob("*.png"):
+            try:
+                img_file.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete {img_file}: {e}")
+        logger.info(f"Cleaned up temporary images in {images_dir}")
 
 
 if __name__ == "__main__":
