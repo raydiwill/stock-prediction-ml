@@ -1,6 +1,7 @@
 from feast import FeatureService
 
-
+# Import the feature view objects using relative import
+# This won't cause duplicates because Python caches module imports
 from .features_definition import (
     stock_basic_features,
     stock_technical_features,
