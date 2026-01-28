@@ -1,9 +1,6 @@
 # Use feature_repo.py as the single source of truth
-# Ignore all other definition files to prevent duplicates
 __init__.py
-entities.py
 features_definition.py
-feature_services.py
 
 # Ignore Python cache
 __pycache__/
