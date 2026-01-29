@@ -58,7 +58,6 @@ def feast_repo_path(tmp_path, sample_feature_data):
         Path: Path to temporary Feast repository.
     """
     import yaml
-    from pathlib import Path
 
     feature_store_yaml = {
         "project": "stock_prediction_ml",
@@ -75,39 +74,52 @@ def feast_repo_path(tmp_path, sample_feature_data):
     sample_feature_data.to_parquet(parquet_path, index=False)
 
     features_code = f"""
-from datetime import timedelta
-from pathlib import Path
-from feast import FileSource, FeatureView, Field
-from feast.types import Float32, Int32
+        from datetime import timedelta
+        from pathlib import Path
+        from feast import FileSource, FeatureView, Field
+        from feast.types import Float32, Int32
 
-from stock_prediction_ml.feast.entities import stock
+        from stock_prediction_ml.feast.entities import stock
 
-stock_features_source = FileSource(
-    path=str(Path(r"{parquet_path}")),
-    timestamp_field="date",
-)
+        stock_features_source = FileSource(
+            path=str(Path(r"{parquet_path}")),
+            timestamp_field="date",
+        )
 
-stock_test_features = FeatureView(
-    name="stock_test_view",
-    entities=[stock],
-    ttl=timedelta(days=1),
-    schema=[
-        Field(name="open", dtype=Float32),
-        Field(name="high", dtype=Float32),
-        Field(name="low", dtype=Float32),
-        Field(name="close", dtype=Float32),
-        Field(name="adj_close", dtype=Float32),
-        Field(name="volume", dtype=Float32),
-        Field(name="return", dtype=Float32),
-        Field(name="day_of_week", dtype=Int32)
-    ],
-    source=stock_features_source,
-    online=True,
-)
-"""
+        stock_test_features = FeatureView(
+            name="stock_test_view",
+            entities=[stock],
+            ttl=timedelta(days=1),
+            schema=[
+                Field(name="open", dtype=Float32),
+                Field(name="high", dtype=Float32),
+                Field(name="low", dtype=Float32),
+                Field(name="close", dtype=Float32),
+                Field(name="adj_close", dtype=Float32),
+                Field(name="volume", dtype=Float32),
+                Field(name="return", dtype=Float32),
+                Field(name="day_of_week", dtype=Int32)
+            ],
+            source=stock_features_source,
+            online=True,
+        )
+        """
     (tmp_path / "features_definition.py").write_text(features_code)
 
     return tmp_path
+
+
+@pytest.fixture
+def feast_feature_store():
+    from pathlib import Path
+    from feast import FeatureStore
+
+    feast_repo_path = (
+        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
+    )
+    store = FeatureStore(repo_path=str(feast_repo_path))
+
+    return store
 
 
 # ==============================================================================
@@ -213,29 +225,17 @@ def test_feature_service_includes_all_views(expected_view):
 # ==============================================================================
 
 
-def test_feature_store_can_be_initialized():
+def test_feature_store_can_be_initialized(feast_feature_store):
     """Verify FeatureStore can be initialized with the configured repo path."""
-    from pathlib import Path
-    from feast import FeatureStore
-
-    feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
-    )
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = feast_feature_store
 
     assert store is not None
     assert store.project == "stock_prediction_ml"
 
 
-def test_feature_store_lists_entities():
+def test_feature_store_lists_entities(feast_feature_store):
     """Verify FeatureStore can list all registered entities."""
-    from pathlib import Path
-    from feast import FeatureStore
-
-    feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
-    )
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = feast_feature_store
 
     entities = store.list_entities()
     assert len(entities) > 0
@@ -248,15 +248,9 @@ def test_feature_store_lists_entities():
     "expected_view",
     ["stock_basic_features", "stock_technical_features", "stock_timeseries_features"],
 )
-def test_feature_store_lists_feature_views(expected_view):
+def test_feature_store_lists_feature_views(expected_view, feast_feature_store):
     """Verify FeatureStore can list all registered feature views."""
-    from pathlib import Path
-    from feast import FeatureStore
-
-    feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
-    )
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = feast_feature_store
 
     feature_views = store.list_feature_views()
     assert len(feature_views) == 3
@@ -296,7 +290,7 @@ def test_materialize_features_to_online_store(feast_repo_path, sample_feature_da
 # ==============================================================================
 
 
-def test_get_online_features_returns_correct_values():
+def test_get_online_features_returns_correct_values(feast_feature_store):
     """Test online feature retrieval for model serving.
 
     Simulates production inference: given stock symbols, retrieve their latest features
@@ -304,13 +298,7 @@ def test_get_online_features_returns_correct_values():
 
     Note: Requires features to be materialized to online store first.
     """
-    from pathlib import Path
-    from feast import FeatureStore
-
-    feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
-    )
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = feast_feature_store
 
     entity_rows = {"symbol": ["AAPL", "MSFT"]}
     features = [
@@ -335,7 +323,7 @@ def test_get_online_features_returns_correct_values():
 # ==============================================================================
 
 
-def test_get_historical_features_performs_point_in_time_join():
+def test_get_historical_features_performs_point_in_time_join(feast_feature_store):
     """Test historical feature retrieval with point-in-time correctness.
 
     Used for training data generation. Feast performs point-in-time joins to ensure
@@ -343,14 +331,9 @@ def test_get_historical_features_performs_point_in_time_join():
 
     Note: Requires offline store (parquet) to be populated.
     """
-    from pathlib import Path
-    from feast import FeatureStore
     import pandas as pd
 
-    feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
-    )
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = feast_feature_store
 
     entity_df = pd.DataFrame(
         {
@@ -379,20 +362,14 @@ def test_get_historical_features_performs_point_in_time_join():
 # ==============================================================================
 
 
-def test_get_online_features_using_feature_service():
+def test_get_online_features_using_feature_service(feast_feature_store):
     """Test retrieving features via FeatureService.
 
     Feature services provide a named bundle of features for specific use cases,
     simplifying feature retrieval by referencing a single service instead of
     listing individual feature views.
     """
-    from pathlib import Path
-    from feast import FeatureStore
-
-    feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
-    )
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = feast_feature_store
 
     entity_rows = {"symbol": ["AAPL"]}
 
