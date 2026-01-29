@@ -26,16 +26,16 @@ def sample_feature_data():
         pd.DataFrame: Sample stock features with date, symbol, and OHLCV columns.
     """
     data = {
-        "date": "2024-01-01",
-        "symbol": "AAPL",
-        "open": 22.4,
-        "high": 24.3,
-        "low": 21.2,
-        "close": 23.1,
-        "adj_close": 23.2,
-        "volume": 23234,
-        "return": 22.1,
-        "day_of_week": 2,
+        "date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+        "symbol": ["AAPL", "AAPL", "AAPL"],
+        "open": [22.4, 23.1, 22.8],
+        "high": [24.3, 24.5, 23.9],
+        "low": [21.2, 22.0, 21.8],
+        "close": [23.1, 23.8, 23.2],
+        "adj_close": [23.2, 23.9, 23.3],
+        "volume": [23234, 25000, 24500],
+        "return": [0.021, 0.030, -0.025],
+        "day_of_week": [0, 1, 2],
     }
 
     return pd.DataFrame(data)
@@ -63,57 +63,49 @@ def feast_repo_path(tmp_path, sample_feature_data):
     feature_store_yaml = {
         "project": "stock_prediction_ml",
         "provider": "local",
-        "registry": "tmp_path/registry.db",
+        "registry": "registry.db",
         "offline_store": {"type": "file"},
-        "online_store": {"typ": "sqlite", "path": "tmp_path/online_store.db"},
+        "online_store": {"type": "sqlite", "path": "online_store.db"},
     }
 
-    with open("tmp_path/feature_store.yaml", "w") as file:
-        yaml.dump(feature_store_yaml, file)
+    (tmp_path / "feature_store.yaml").write_text(yaml.dump(feature_store_yaml))
 
     parquet_path = tmp_path / "data" / "feature" / "sample_feature_data.parquet"
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    sample_feature_data.to_parquet(parquet_path)
+    sample_feature_data.to_parquet(parquet_path, index=False)
 
-    features_code = """
-        from datetime import timedelta
-        from pathlib import Path
-        from feast import FileSource, FeatureView, Field, Entity, ValueType
-        from feast.types import Float32, Int32
+    features_code = f"""
+from datetime import timedelta
+from pathlib import Path
+from feast import FileSource, FeatureView, Field
+from feast.types import Float32, Int32
 
-        from stock_prediction_ml.feast.entities import stock
+from stock_prediction_ml.feast.entities import stock
 
-        # stock = Entity(
-        #     name="symbol",
-        #     description="Stock's ticker symbol (E.g AAPL, TSLA, etc)",
-        #     value_type=ValueType.STRING,
-        # )
+stock_features_source = FileSource(
+    path=str(Path(r"{parquet_path}")),
+    timestamp_field="date",
+)
 
-        stock_features_source = FileSource(
-            path=str(tmp_path / "data" / "feature" / "sample_feature_data.parquet"),
-            timestamp_field="date",
-        )
-
-        # TODO: Create a simplified feature view
-        stock_test_features = FeatureView(
-            name="stock_test_view",
-            entities=stock,
-            ttl=1,
-            schema=[
-                Field(name="open", dtype=Float32),
-                Field(name="high", dtype=Float32),
-                Field(name="low", dtype=Float32),
-                Field(name="close", dtype=Float32),
-                Field(name="adj_close", dtype=Float32),
-                Field(name="volume", dtype=Float32),
-                Field(name="return", dtype=Float32),
-                Field(name="day_of_week", dtype=Int32)
-            ],
-            source=stock_features_source,
-            online=True,
-        )
-    """
-    Path(tmp_path / "feature_definition.py").write_text(features_code)
+stock_test_features = FeatureView(
+    name="stock_test_view",
+    entities=[stock],
+    ttl=timedelta(days=1),
+    schema=[
+        Field(name="open", dtype=Float32),
+        Field(name="high", dtype=Float32),
+        Field(name="low", dtype=Float32),
+        Field(name="close", dtype=Float32),
+        Field(name="adj_close", dtype=Float32),
+        Field(name="volume", dtype=Float32),
+        Field(name="return", dtype=Float32),
+        Field(name="day_of_week", dtype=Int32)
+    ],
+    source=stock_features_source,
+    online=True,
+)
+"""
+    (tmp_path / "features_definition.py").write_text(features_code)
 
     return tmp_path
 
@@ -154,6 +146,7 @@ def test_stock_basic_features_has_correct_schema(expected_field):
     "expected_field",
     [
         "high_low",
+        "close_open",
         "return",
         "return_lag_1",
         "return_lag_2",
@@ -178,7 +171,7 @@ def test_stock_technical_features_has_correct_schema(expected_field):
 
     field_names = [field.name for field in stock_technical_features.schema]
     assert expected_field in field_names, f"Missing field: {expected_field}"
-    assert len(field_names) == 17
+    assert len(field_names) == 18
 
 
 @pytest.mark.parametrize(
@@ -211,7 +204,7 @@ def test_feature_service_includes_all_views(expected_view):
     """Verify stock_prediction_service bundles all 3 feature views."""
     from stock_prediction_ml.feast.feature_services import stock_prediction_service
 
-    view_names = [view.name for view in stock_prediction_service.features]
+    view_names = [view.name for view in stock_prediction_service.feature_view_projections]
     assert expected_view in view_names, f"Missing view: {expected_view}"
 
 
@@ -281,7 +274,7 @@ def test_feature_store_lists_feature_views(expected_view):
 def test_materialize_features_to_online_store(feast_repo_path, sample_feature_data):
     """Test materialization of features from offline store (parquet) to online store (SQLite).
 
-    Verifies the core Feast workflow:
+    Verifies the core Feast workflow
     1. Offline store contains features in parquet format
     2. Materialize() copies features to online store
     3. Online store is ready for low-latency feature serving
@@ -334,8 +327,7 @@ def test_get_online_features_returns_correct_values():
 
     for feature_ref in features:
         feature_name = feature_ref.split(":")[-1]
-        assert "close" in df.columns
-        assert "return" in df.columns
+        assert feature_name in df.columns
 
 
 # ==============================================================================
@@ -363,7 +355,7 @@ def test_get_historical_features_performs_point_in_time_join():
     entity_df = pd.DataFrame(
         {
             "symbol": ["AAPL", "AAPL"],
-            "date": ["2024-01-01", "2024-01-02"],
+            "date": pd.to_datetime(["2025-01-08", "2025-01-10"]),
         }
     )
 
@@ -379,8 +371,7 @@ def test_get_historical_features_performs_point_in_time_join():
 
     for feature_ref in features:
         feature_name = feature_ref.split(":")[-1]
-        assert "close" in df.columns
-        assert "return" in df.columns
+        assert feature_name in df.columns
 
 
 # ==============================================================================
