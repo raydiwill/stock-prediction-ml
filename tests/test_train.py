@@ -14,7 +14,6 @@ from stock_prediction_ml.model.train import (
     fit_and_save_encoder,
     load_and_transform_with_encoder,
     load_config,
-    load_raw_training_data,
     load_selected_features,
     load_training_data_from_feast,
     split_data_train_test,
@@ -48,7 +47,11 @@ def test_config_path(tmp_path):
 
 @pytest.fixture
 def raw_df(tmp_path, test_config_path):
-    # Build a small synthetic DataFrame and save parquet
+    """Generate synthetic training data for tests.
+    
+    Returns a DataFrame with date, symbol, return, and target columns
+    suitable for testing the training pipeline.
+    """
     import numpy as np
     import pandas as pd
 
@@ -61,8 +64,9 @@ def raw_df(tmp_path, test_config_path):
             "target": np.random.randint(0, 2, size=len(dates) * 3),
         }
     )
-    df.to_parquet(tmp_path / "features.parquet")
-    return load_raw_training_data(tmp_path / "features.parquet")
+    # Sort by symbol and date to match expected behavior
+    df = df.sort_values(by=["symbol", "date"]).reset_index(drop=True)
+    return df
 
 
 @pytest.fixture
@@ -286,23 +290,6 @@ def test_load_config_raises_error_for_missing_file():
 def test_load_selected_features_returns_list_of_strings(selected_features):
     """Should return a list of feature names from JSON file."""
     assert isinstance(selected_features, list)
-
-
-def test_load_raw_training_data_returns_training_dataframe(raw_df):
-    assert isinstance(raw_df, pd.DataFrame)
-    assert raw_df is not None
-    assert not raw_df.empty
-
-
-def test_load_raw_training_data_has_date_column_as_datetime(raw_df):
-    """Should convert 'date' column to datetime type."""
-    assert pd.api.types.is_datetime64_any_dtype(raw_df["date"])
-
-
-def test_load_raw_training_data_is_sorted_by_symbol_and_date(raw_df):
-    """Should return data sorted by ['symbol', 'date']."""
-    sorted_df = raw_df.sort_values(by=["symbol", "date"])
-    pd.testing.assert_frame_equal(raw_df, sorted_df)
 
 
 @pytest.mark.slow
