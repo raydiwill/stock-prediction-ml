@@ -93,8 +93,9 @@ def feast_repo_path(tmp_path, raw_df):
     Returns:
         Path: Path to temporary Feast repository.
     """
-    import yaml
     import sys
+
+    import yaml
     from feast import FeatureStore
 
     feature_store_yaml = {
@@ -163,8 +164,8 @@ stock_training_service = FeatureService(
     sys.path.insert(0, str(tmp_path))
     try:
         from entities import stock
-        from features_definition import stock_test_features
         from feature_services import stock_training_service
+        from features_definition import stock_test_features
 
         store = FeatureStore(repo_path=str(tmp_path))
         store.apply([stock, stock_test_features, stock_training_service])

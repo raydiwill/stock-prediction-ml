@@ -2,11 +2,10 @@ from feast import FeatureService
 
 from stock_prediction_ml.feast_repo.features_definition import (
     stock_basic_features,
+    stock_target_label,
     stock_technical_features,
     stock_timeseries_features,
-    stock_target_label
 )
-
 
 stock_prediction_service = FeatureService(
     name="stock_prediction_service",

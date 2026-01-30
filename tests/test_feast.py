@@ -112,6 +112,7 @@ def temp_feast_repo_path(tmp_path, sample_feature_data):
 @pytest.fixture
 def feast_feature_store():
     from pathlib import Path
+
     from feast import FeatureStore
 
     feast_repo_path = (
@@ -133,6 +134,7 @@ def feast_feature_store():
 def test_entity_has_correct_attributes():
     """Verify that the stock entity is configured with correct name and type."""
     from feast import ValueType
+
     from stock_prediction_ml.feast_repo.entities import stock
 
     assert stock.name == "symbol"
@@ -198,6 +200,7 @@ def test_stock_technical_features_has_correct_schema(expected_field):
 def test_stock_timeseries_features_has_correct_schema(expected_field):
     """Verify stock_timeseries_features view contains all 5 temporal fields with Int32 dtype."""
     from feast.types import Int32
+
     from stock_prediction_ml.feast_repo.features_definition import (
         stock_timeseries_features,
     )

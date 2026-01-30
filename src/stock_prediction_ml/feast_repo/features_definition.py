@@ -1,11 +1,10 @@
 from datetime import timedelta
 from pathlib import Path
 
-from feast import FileSource, FeatureView, Field
+from feast import FeatureView, Field, FileSource
 from feast.types import Float32, Int32
 
 from stock_prediction_ml.feast_repo.entities import stock
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
