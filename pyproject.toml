@@ -55,6 +55,9 @@ pythonpath = ["src"]
 filterwarnings = [
     "ignore::marshmallow.warnings.ChangedInMarshmallow4Warning",
 ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.ruff.lint]
 select = ["E","F","I","UP"]
