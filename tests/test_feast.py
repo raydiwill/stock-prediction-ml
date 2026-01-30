@@ -79,7 +79,7 @@ def feast_repo_path(tmp_path, sample_feature_data):
         from feast import FileSource, FeatureView, Field
         from feast.types import Float32, Int32
 
-        from stock_prediction_ml.feast.entities import stock
+        from stock_prediction_ml.feast_repo.entities import stock
 
         stock_features_source = FileSource(
             path=str(Path(r"{parquet_path}")),
@@ -115,7 +115,7 @@ def feast_feature_store():
     from feast import FeatureStore
 
     feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast"
+        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast_repo"
     )
     store = FeatureStore(repo_path=str(feast_repo_path))
 
@@ -130,7 +130,7 @@ def feast_feature_store():
 def test_entity_has_correct_attributes():
     """Verify that the stock entity is configured with correct name and type."""
     from feast import ValueType
-    from stock_prediction_ml.feast.entities import stock
+    from stock_prediction_ml.feast_repo.entities import stock
 
     assert stock.name == "symbol"
     assert stock.value_type == ValueType.STRING
@@ -147,7 +147,7 @@ def test_entity_has_correct_attributes():
 )
 def test_stock_basic_features_has_correct_schema(expected_field):
     """Verify stock_basic_features view contains all required OHLCV fields."""
-    from stock_prediction_ml.feast.features_definition import stock_basic_features
+    from stock_prediction_ml.feast_repo.features_definition import stock_basic_features
 
     field_names = [field.name for field in stock_basic_features.schema]
     assert expected_field in field_names, f"Missing field: {expected_field}"
@@ -179,7 +179,7 @@ def test_stock_basic_features_has_correct_schema(expected_field):
 )
 def test_stock_technical_features_has_correct_schema(expected_field):
     """Verify stock_technical_features view contains all 17 technical indicator fields."""
-    from stock_prediction_ml.feast.features_definition import stock_technical_features
+    from stock_prediction_ml.feast_repo.features_definition import stock_technical_features
 
     field_names = [field.name for field in stock_technical_features.schema]
     assert expected_field in field_names, f"Missing field: {expected_field}"
@@ -193,7 +193,7 @@ def test_stock_technical_features_has_correct_schema(expected_field):
 def test_stock_timeseries_features_has_correct_schema(expected_field):
     """Verify stock_timeseries_features view contains all 5 temporal fields with Int32 dtype."""
     from feast.types import Int32
-    from stock_prediction_ml.feast.features_definition import stock_timeseries_features
+    from stock_prediction_ml.feast_repo.features_definition import stock_timeseries_features
 
     field_names = [field.name for field in stock_timeseries_features.schema]
     assert expected_field in field_names, f"Missing field: {expected_field}"
@@ -214,7 +214,7 @@ def test_stock_timeseries_features_has_correct_schema(expected_field):
 )
 def test_feature_service_includes_all_views(expected_view):
     """Verify stock_prediction_service bundles all 3 feature views."""
-    from stock_prediction_ml.feast.feature_services import stock_prediction_service
+    from stock_prediction_ml.feast_repo.feature_services import stock_prediction_service
 
     view_names = [view.name for view in stock_prediction_service.feature_view_projections]
     assert expected_view in view_names, f"Missing view: {expected_view}"
