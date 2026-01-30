@@ -83,3 +83,16 @@ stock_timeseries_features = FeatureView(
     online=True,
     tags={"team": "ML"},
 )
+
+
+stock_target_label = FeatureView(
+    name="stock_target_label",
+    entities=[stock],
+    ttl=timedelta(days=1),
+    schema=[
+        Field(name="target", dtype=Int32)
+    ],
+    source=stock_features_source,
+    online=False,
+    tags={"team": "ML"},
+)
