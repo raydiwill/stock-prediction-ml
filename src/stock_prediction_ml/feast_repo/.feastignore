@@ -1,0 +1,8 @@
+# Use feature_repo.py as the single source of truth
+__init__.py
+features_definition.py
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo

@@ -9,11 +9,12 @@ import mlflow
 import pandas as pd
 import yaml
 from catboost import CatBoostClassifier
+from feast import FeatureStore
 from mlflow.models import infer_signature
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
-from src.stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.config.settings import settings
 
 # Configure enhanced logging with timestamps and better formatting
 logging.basicConfig(
@@ -109,35 +110,56 @@ def load_selected_features(
     return selected_features
 
 
-def load_raw_training_data(feature_data_path: str | Path | None = None) -> pd.DataFrame:
-    """Load raw feature data from parquet and normalize/sort for temporal splits.
+def load_training_data_from_feast(
+    feature_service_name: str = "stock_training_service",
+    feast_repo_path: str | Path | None = None,
+) -> pd.DataFrame:
+    """Load training features from Feast offline store using historical retrieval.
 
     Args:
-        feature_data_path (str | Path | None): Path to the parquet dataset.
-            If None, defaults to data/feature/stock_eod_features.parquet.
+        feature_service_name (str): Name of the Feast feature service to use.
+        feast_repo_path (str | Path | None): Path to Feast repo; 
+                                            defaults to src/stock_prediction_ml/feast_repo.
 
     Returns:
-        pd.DataFrame: DataFrame with 'date' as datetime and sorted by ['symbol', 'date'].
+        pd.DataFrame: Historical features with entity columns, timestamps, and all feature views.
 
     Example:
-        >>> df = load_raw_training_data("data/feature/stock_eod_features.parquet")
-        >>> df[['symbol', 'date']].head()
+        >>> df = load_features_from_feast("stock_training_service")
+        >>> df.columns
+        Index(['symbol', 'date', 'open', 'high', ..., 'target'])
     """
-    if feature_data_path is None:
-        feature_data_path = (
-            PROJECT_ROOT / "data" / "feature" / "stock_eod_features.parquet"
-        )
+    if feast_repo_path is None:
+        feast_repo_path = PROJECT_ROOT / "src" / "stock_prediction_ml" / "feast_repo"
     else:
-        feature_data_path = Path(feature_data_path)
+        feast_repo_path = Path(feast_repo_path)
 
-    logger.info(f"Loading raw training data from: {feature_data_path}")
-    df = pd.read_parquet(feature_data_path)
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values(by=["symbol", "date"])
+    logger.info(f"Initializing FeatureStore from: {feast_repo_path}")
+    store = FeatureStore(str(feast_repo_path))
 
-    log_dataframe_info("Raw training data loaded", df)
-    logger.info(f"Unique symbols: {df['symbol'].nunique()}")
-    return df
+    raw_feature_path = PROJECT_ROOT / "data" / "feature" / "stock_eod_features.parquet"
+    raw_df = pd.read_parquet(raw_feature_path)
+
+    # Prepare entity for point-in-time Feast
+    entity_df = raw_df[["symbol", "date"]].copy()
+    entity_df["date"] = pd.to_datetime(entity_df["date"])
+
+    logger.info(f"Entity DataFrame shape: {entity_df.shape}")
+    logger.info(f"Date range: {entity_df['date'].min()} to {entity_df['date'].max()}")
+
+    # Retrieve historical features
+    logger.info(f"Fetching features from service: {feature_service_name}")
+    training_df = store.get_historical_features(
+        entity_df=entity_df, features=store.get_feature_service(feature_service_name)
+    ).to_df()
+
+    # Sort to prepare for pipeline
+    training_df = training_df.sort_values(["symbol", "date"])
+
+    log_dataframe_info("Feast historical features loaded", training_df)
+    logger.info(f"Unique symbols: {training_df['symbol'].nunique()}")
+
+    return training_df
 
 
 def split_data_train_test(
@@ -219,7 +241,7 @@ def load_and_transform_with_encoder(
         categorical_column (str): Column to encode (default 'symbol').
         meta_dir (str | Path | None): Directory containing encoder .pkl; defaults to data/meta.
         encoder_name (str | None): Custom encoder file name (with/without .pkl).
-        encoder (OneHotEncoder | None): Optional in-memory encoder. 
+        encoder (OneHotEncoder | None): Optional in-memory encoder.
                                         If provided, skips loading from disk.
 
     Returns:
@@ -397,7 +419,7 @@ def plot_feature_importance(model, feature_names, top_n=20, save_path=None):
 
     if save_path is None:
         save_path = PROJECT_ROOT / "docs" / "images"
-    
+
     # Add name
     save_path = save_path / "feature_importance.png"
     save_path = Path(save_path)
@@ -432,7 +454,7 @@ def plot_confusion_matrix(y_true, y_pred, save_path=None):
 
     if save_path is None:
         save_path = PROJECT_ROOT / "docs" / "images"
-    
+
     # Add name
     save_path = save_path / "confusion_matrix.png"
     save_path = Path(save_path)
@@ -476,7 +498,7 @@ def plot_roc_curve(y_true, y_proba, save_path=None):
 
     if save_path is None:
         save_path = PROJECT_ROOT / "docs" / "images"
-    
+
     # Add name
     save_path = save_path / "roc_curve.png"
     save_path = Path(save_path)
@@ -512,8 +534,10 @@ def main(config_path: str | Path | None = None):
     log_section("Stock Prediction Model Training")
 
     config = load_config(config_path)
-    log_section("Loading data")
-    df = load_raw_training_data(config.get("training_data_path"))
+    log_section("Loading data from Feast")
+    df = load_training_data_from_feast(
+        feature_service_name=config.get("feast_service_name")
+    )
     selected_features = load_selected_features(config.get("selected_features_path"))
     logger.info(f"Selected features: {len(selected_features)} features")
 

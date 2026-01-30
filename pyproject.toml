@@ -11,6 +11,7 @@ requires-python = ">=3.13"
 dependencies = [
     "catboost>=1.2.8",
     "fastapi>=0.121.3",
+    "feast>=0.50.0",
     "great-expectations>=1.8.1",
     "ipykernel>=7.0.1",
     "ipywidgets>=8.1.8",
@@ -19,7 +20,7 @@ dependencies = [
     "mlflow>=3.6.0",
     "optuna>=4.6.0",
     "pandas>=2.3.3",
-    "pyarrow>=22.0.0",
+    "pyarrow>=21.0.0",
     "pydantic>=2.12.3",
     "pydantic-settings>=2.12.0",
     "pytest-mock>=3.15.1",
@@ -27,6 +28,7 @@ dependencies = [
     "requests>=2.32.5",
     "scikit-learn>=1.7.2",
     "seaborn>=0.13.2",
+    "setuptools>=80.9.0",
     "sqlalchemy>=2.0.44",
     "tqdm>=4.67.1",
     "xgboost>=3.1.1",
@@ -52,6 +54,9 @@ target-version = "py311"
 pythonpath = ["src"]
 filterwarnings = [
     "ignore::marshmallow.warnings.ChangedInMarshmallow4Warning",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
 [tool.ruff.lint]

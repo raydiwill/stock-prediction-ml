@@ -2,6 +2,7 @@ training_data_path: data/feature/stock_eod_features.parquet
 selected_features_path: data/meta/selected_features.json
 meta_dir: data/meta
 model_dir: models
+feast_service_name: stock_training_service
 
 target: 'target'
 test_size: 0.1
