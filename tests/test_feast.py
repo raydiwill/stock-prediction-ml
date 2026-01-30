@@ -42,7 +42,7 @@ def sample_feature_data():
 
 
 @pytest.fixture
-def feast_repo_path(tmp_path, sample_feature_data):
+def temp_feast_repo_path(tmp_path, sample_feature_data):
     """Set up a temporary Feast repository for isolated testing.
 
     Creates a temporary Feast environment with:
@@ -115,7 +115,10 @@ def feast_feature_store():
     from feast import FeatureStore
 
     feast_repo_path = (
-        Path(__file__).resolve().parents[1] / "src" / "stock_prediction_ml" / "feast_repo"
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "stock_prediction_ml"
+        / "feast_repo"
     )
     store = FeatureStore(repo_path=str(feast_repo_path))
 
@@ -179,7 +182,9 @@ def test_stock_basic_features_has_correct_schema(expected_field):
 )
 def test_stock_technical_features_has_correct_schema(expected_field):
     """Verify stock_technical_features view contains all 17 technical indicator fields."""
-    from stock_prediction_ml.feast_repo.features_definition import stock_technical_features
+    from stock_prediction_ml.feast_repo.features_definition import (
+        stock_technical_features,
+    )
 
     field_names = [field.name for field in stock_technical_features.schema]
     assert expected_field in field_names, f"Missing field: {expected_field}"
@@ -193,7 +198,9 @@ def test_stock_technical_features_has_correct_schema(expected_field):
 def test_stock_timeseries_features_has_correct_schema(expected_field):
     """Verify stock_timeseries_features view contains all 5 temporal fields with Int32 dtype."""
     from feast.types import Int32
-    from stock_prediction_ml.feast_repo.features_definition import stock_timeseries_features
+    from stock_prediction_ml.feast_repo.features_definition import (
+        stock_timeseries_features,
+    )
 
     field_names = [field.name for field in stock_timeseries_features.schema]
     assert expected_field in field_names, f"Missing field: {expected_field}"
@@ -216,7 +223,9 @@ def test_feature_service_includes_all_views(expected_view):
     """Verify stock_prediction_service bundles all 3 feature views."""
     from stock_prediction_ml.feast_repo.feature_services import stock_prediction_service
 
-    view_names = [view.name for view in stock_prediction_service.feature_view_projections]
+    view_names = [
+        view.name for view in stock_prediction_service.feature_view_projections
+    ]
     assert expected_view in view_names, f"Missing view: {expected_view}"
 
 
@@ -246,14 +255,19 @@ def test_feature_store_lists_entities(feast_feature_store):
 
 @pytest.mark.parametrize(
     "expected_view",
-    ["stock_basic_features", "stock_technical_features", "stock_timeseries_features"],
+    [
+        "stock_basic_features",
+        "stock_technical_features",
+        "stock_timeseries_features",
+        "stock_target_label",
+    ],
 )
 def test_feature_store_lists_feature_views(expected_view, feast_feature_store):
     """Verify FeatureStore can list all registered feature views."""
     store = feast_feature_store
 
     feature_views = store.list_feature_views()
-    assert len(feature_views) == 3
+    assert len(feature_views) == 4
 
     view_names = [feature_view.name for feature_view in feature_views]
     assert expected_view in view_names, f"Missing view: {expected_view}"
@@ -265,7 +279,9 @@ def test_feature_store_lists_feature_views(expected_view, feast_feature_store):
 
 
 @pytest.mark.slow  # Mark as slow since materialization can take time
-def test_materialize_features_to_online_store(feast_repo_path, sample_feature_data):
+def test_materialize_features_to_online_store(
+    temp_feast_repo_path, sample_feature_data
+):
     """Test materialization of features from offline store (parquet) to online store (SQLite).
 
     Verifies the core Feast workflow
@@ -275,7 +291,7 @@ def test_materialize_features_to_online_store(feast_repo_path, sample_feature_da
     """
     from feast import FeatureStore
 
-    store = FeatureStore(repo_path=str(feast_repo_path))
+    store = FeatureStore(repo_path=str(temp_feast_repo_path))
 
     start_date = sample_feature_data["date"].min()
     end_date = sample_feature_data["date"].max()
