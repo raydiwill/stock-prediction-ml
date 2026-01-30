@@ -1,6 +1,6 @@
 from feast import FeatureService
 
-from stock_prediction_ml.feast.features_definition import (
+from stock_prediction_ml.feast_repo.features_definition import (
     stock_basic_features,
     stock_technical_features,
     stock_timeseries_features,
