@@ -60,6 +60,11 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
    - Ingestion pipeline ([`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py)) with adaptive batching
 
 5. **Model training** ([`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py))
+   - **Data Loading**:
+     - `load_training_data_from_feast()`: Retrieves historical features from Feast offline store
+     - Point-in-time correct joins via `get_historical_features()` API
+     - Configurable feature service (default: `stock_training_service`)
+     - Alternative `load_raw_training_data()` for backward compatibility (deprecated)
    - **Preprocessing**:
      - Time-based train/val/test split using date quantiles (default 90/5/5)
      - OneHotEncoder for `symbol` feature (fit on train only, saved to `data/meta/ohe.pkl`)
@@ -67,7 +72,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
    - **Training**:
      - CatBoost classifier with early stopping (50 rounds on validation set)
      - Configurable hyperparameters via YAML ([`configs/training/local.yaml`](configs/training/local.yaml))
-     - Deterministic with `random_seed: 42`
+     - Deterministic with `random_seed: 42`, `allow_writing_files: false` in tests
    - **Evaluation**:
      - Metrics: accuracy and ROC-AUC for both validation and test sets
      - Confusion matrix, ROC curve, feature importance plots
@@ -85,31 +90,38 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 7. **Testing** ([`tests/`](tests/))
    - Synthetic fixtures for hermetic CI tests
+   - Pytest markers: `@pytest.mark.slow` for integration tests.
    - Test coverage:
      - Data pull and processing ([`test_pull.py`](tests/test_pull.py))
      - Data validation expectations ([`test_validation.py`](tests/test_validation.py))
      - Feature engineering ([`test_build_features.py`](tests/test_build_features.py))
      - Database ingestion ([`test_ingest.py`](tests/test_ingest.py))
-     - Training pipeline ([`test_train.py`](tests/test_train.py))
-     - Feast feature store ([`test_feast.py`](tests/test_feast.py))
+     - Training pipeline ([`test_train.py`](tests/test_train.py)) - 26 tests including Feast data loading
+     - Feast feature store ([`test_feast.py`](tests/test_feast.py)) - Entity/view schemas, materialization, retrieval
 
-8. **Feature Store** ([`src/stock_prediction_ml/feast/`](src/stock_prediction_ml/feast/))
+8. **Feature Store** ([`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/))
    - **Infrastructure**:
-     - Feast SDK v0.58.0 configured with file-based offline store (parquet + DuckDB)
+     - Feast SDK v0.50.0+ configured with file-based offline store (parquet + DuckDB)
      - SQLite online store for low-latency feature serving
-     - Local registry (`registry.db`) for feature metadata
-   - **Entity definition** ([`entities.py`](src/stock_prediction_ml/feast/entities.py)):
+     - Local registry (`data/feast/registry.db`) for feature metadata
+   - **Entity definition** ([`entities.py`](src/stock_prediction_ml/feast_repo/entities.py)):
      - `symbol` entity (STRING type) as join key for stock ticker
-   - **Feature views** ([`features_definition.py`](src/stock_prediction_ml/feast/features_definition.py)):
+   - **Feature views** ([`features_definition.py`](src/stock_prediction_ml/feast_repo/features_definition.py)):
      - `stock_basic_features`: 6 OHLCV features (open, high, low, close, adj_close, volume)
      - `stock_technical_features`: 18 technical indicators (returns, lags, rolling stats, RSI, MACD, SMA)
      - `stock_timeseries_features`: 5 temporal features (day_of_week, month, quarter)
-   - **Feature service** ([`feature_services.py`](src/stock_prediction_ml/feast/feature_services.py)):
-     - `stock_prediction_service`: bundles all feature views for model serving
+     - `stock_target_label`: Binary target for model training (online=False)
+   - **Feature services** ([`feature_services.py`](src/stock_prediction_ml/feast_repo/feature_services.py)):
+     - `stock_prediction_service`: Bundles feature views for model serving (excludes target)
+     - `stock_training_service`: Bundles all features including target for training pipeline
+   - **Training Integration**:
+     - `load_training_data_from_feast()` function retrieves historical features via offline store
+     - Point-in-time correct joins ensure no data leakage
+     - Training pipeline fully migrated from direct parquet loading to Feast API
    - **Materialization**:
-     - Successfully materialized 203 feature records (42 basic + 126 technical + 35 timeseries)
+     - Successfully materialized 203+ feature records to online store
      - Data range: 2024-2025 EOD stock data
-     - Online store ready for real-time feature retrieval
+     - Online store ready for real-time feature retrieval in API endpoints
 
 ### 🚧 In Progress (10%)
 1. **REST API** ([`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py))
@@ -137,13 +149,13 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py): API ingestion with pagination and parquet output
 - [`src/stock_prediction_ml/data_validation/validation.py`](src/stock_prediction_ml/data_validation/validation.py): Great Expectations validation suite
 - [`src/stock_prediction_ml/features/build_features.py`](src/stock_prediction_ml/features/build_features.py): Feature engineering pipeline
-- [`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py): End-to-end training with MLflow logging
+- [`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py): End-to-end training with Feast + MLflow integration
 - [`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py): Database ingestion with deduplication
-- [`src/stock_prediction_ml/feast/`](src/stock_prediction_ml/feast/): Feature store infrastructure (Feast SDK)
+- [`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/): Feature store infrastructure (Feast SDK)
 
 ### Configuration
-- [`configs/training/local.yaml`](configs/training/local.yaml): Training configuration (paths, hyperparameters, MLflow settings)
-- [`src/stock_prediction_ml/feast/feature_store.yaml`](src/stock_prediction_ml/feast/feature_store.yaml): Feast feature store configuration (offline/online stores, registry)
+- [`configs/training/local.yaml`](configs/training/local.yaml): Training configuration (paths, hyperparameters, Feast service, MLflow settings)
+- [`src/stock_prediction_ml/feast_repo/feature_store.yaml`](src/stock_prediction_ml/feast_repo/feature_store.yaml): Feast feature store configuration (offline/online stores, registry)
 - [`config.env`](config.env): Environment variables (API keys, DB URL, MLflow URI)
 - [`pyproject.toml`](pyproject.toml): Project dependencies and metadata
 
@@ -211,7 +223,8 @@ Feature vector (34 features after encoding `symbol`):
 - `test_read_validated_file_default_path`: Default path resolution works
 
 ✅ **Training**:
-- `test_load_config_returns_dict_with_expected_keys`: Config parsing validates
+- `test_load_config_returns_dict_with_expected_keys`: Config parsing validates (includes `feast_service_name`)
+- `test_load_training_data_from_feast_*`: Feast offline store data loading (3 tests with temp repo fixtures)
 - `test_fit_and_save_encoder`: Encoder fits and saves correctly
 - `test_train_model`: Model trains and achieves >50% accuracy on synthetic data
 - `test_evaluate_model`: Metrics (accuracy, ROC-AUC) computed correctly
@@ -260,8 +273,9 @@ Feature vector (34 features after encoding `symbol`):
 - **Deterministic**: Fixed random seeds ensure reproducible test outcomes
 
 ### Future tech debt
-- **Feature store integration**: Connect Feast online store to REST API predict endpoint for real-time feature retrieval
-- **API implementation**: Stub endpoints need model loading and Feast feature retrieval logic
+- **API implementation**: Stub endpoints need model loading and Feast online store integration for real-time predictions
+- **Production Feast tests**: Add `@pytest.mark.integration` tests using production feature store (not temp fixtures)
+- **Incremental materialization**: Implement daily `materialize-incremental` workflow for feature updates
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
 - **Containerization**: Docker Compose for local dev and production deployment
