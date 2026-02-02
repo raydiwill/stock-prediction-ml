@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import joblib
@@ -510,6 +511,39 @@ def plot_roc_curve(y_true, y_proba, save_path=None):
     return save_path
 
 
+def clean_up_resources(config: dict) -> None:
+    """Clean up resources after logging to MLflow
+    
+    Args:
+        config (dict): config dictionary
+    """
+    # 1. Delete the OneHotEncoder pickle
+    meta_dir = Path(config.get("meta_dir"))
+    if (meta_dir / "ohe.pkl").exists():
+        (meta_dir / "ohe.pkl").unlink()
+
+    # 2. Delete all generated images in docs/images
+    images_dir = PROJECT_ROOT / "docs" / "images"
+    if images_dir.exists():
+        for img_file in images_dir.glob("*.png"):
+            try:
+                img_file.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete {img_file}: {e}")
+        logger.info(f"Cleaned up temporary images in {images_dir}")
+
+    # 3. Clean up catboost local folder
+    catboost_dir = PROJECT_ROOT / "catboost_info"
+    if catboost_dir.exists():
+        try:
+            shutil.rmtree(catboost_dir)
+        except Exception as e:
+            logger.warning(f"Failed to delete folder {catboost_dir}: {e}")
+        
+        logger.info(f"Cleaned up model resources!")
+
+
+
 def main(config_path: str | Path | None = None):
     """End-to-end training pipeline with MLflow logging.
 
@@ -634,20 +668,9 @@ def main(config_path: str | Path | None = None):
         logger.info(f"View results: mlflow ui --backend-store-uri {tracking_uri}")
 
     # Clean up resources
-    # 1. Delete the OneHotEncoder pickle
-    meta_dir = Path(config.get("meta_dir"))
-    if (meta_dir / "ohe.pkl").exists():
-        (meta_dir / "ohe.pkl").unlink()
-
-    # 2. Delete all generated images in docs/images
-    images_dir = PROJECT_ROOT / "docs" / "images"
-    if images_dir.exists():
-        for img_file in images_dir.glob("*.png"):
-            try:
-                img_file.unlink()
-            except Exception as e:
-                logger.warning(f"Failed to delete {img_file}: {e}")
-        logger.info(f"Cleaned up temporary images in {images_dir}")
+    log_section("Clean up")
+    clean_up_resources(config)
+    logger.info("Clean up complete!")
 
 
 if __name__ == "__main__":
