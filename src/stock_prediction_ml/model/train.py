@@ -540,7 +540,7 @@ def clean_up_resources(config: dict) -> None:
         except Exception as e:
             logger.warning(f"Failed to delete folder {catboost_dir}: {e}")
         
-        logger.info(f"Cleaned up model resources!")
+        logger.info("Cleaned up model resources!")
 
 
 

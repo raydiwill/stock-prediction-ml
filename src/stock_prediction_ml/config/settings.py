@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List
+
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
 
     @property
-    def split_cors_origins_to_list(self) -> List[str]:
+    def split_cors_origins_to_list(self) -> list[str]:
         """Conver cors_origin string to list for FastAPI"""
         return [origin.strip() for origin in self.cors_origins.split(",")]
 

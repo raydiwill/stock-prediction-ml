@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
+
 import pandas as pd
+from pydantic import BaseModel, Field, field_validator
 
 
 class StockRequest(BaseModel):
@@ -26,7 +27,7 @@ class StockRequest(BaseModel):
         try:
             parsed_date = pd.to_datetime(sent_date)
         except (ValueError, TypeError):
-            raise ValueError(f"Invalid format! Must be in YYYY-MM-DD.")
+            raise ValueError("Invalid format! Must be in YYYY-MM-DD.")
 
         if parsed_date.weekday() >= 5:
             raise ValueError(f"Date {sent_date} is a weekend (markets closed)")
