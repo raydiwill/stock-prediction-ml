@@ -6,7 +6,7 @@ import pandas as pd
 class StockRequest(BaseModel):
     symbol: str = Field(..., example="AAPL", description="Stock ticker symbol")
     date: str = Field(
-        ..., examples="2025-01-12", description="Trading date in format YYYY-MM-DD"
+        ..., example="2025-01-12", description="Trading date in format YYYY-MM-DD"
     )
 
     @field_validator("symbol")
