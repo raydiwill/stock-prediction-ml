@@ -16,7 +16,7 @@ wheels/
 .DS_Store
 
 # Environment variables file
-*.env
+config.env.*
 
 # Data folder
 data/
