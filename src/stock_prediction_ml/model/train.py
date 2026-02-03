@@ -586,6 +586,13 @@ def clean_up_resources(config: dict) -> None:
         logger.info("Cleaned up model resources!")
 
 
+def save_model_artifacts_local():
+    pass
+
+
+def register_model_to_registry():
+    pass
+
 
 def main(config_path: str | Path | None = None):
     """End-to-end training pipeline with MLflow logging.
