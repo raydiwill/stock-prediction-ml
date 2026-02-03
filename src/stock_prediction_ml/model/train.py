@@ -7,11 +7,13 @@ from pathlib import Path
 import joblib
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.pyfunc
 import pandas as pd
 import yaml
 from catboost import CatBoostClassifier
 from feast import FeatureStore
 from mlflow.models import infer_signature
+from mlflow.tracking import MlflowClient
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
@@ -27,6 +29,47 @@ logger = logging.getLogger(__name__)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+class StockPredictionModel(mlflow.pyfunc.PyFuncModel):
+    def load_context(self, context):
+        import json
+        import joblib
+        from catboost import CatBoostClassifier
+
+        self.model = CatBoostClassifier()
+        self.model.load_model(context.artifacts["model_path"])
+
+        self.encoder = joblib.load(context.artifacts["encoder_path"])
+
+        with open(context.artifacts["feature_path"], "r") as file:
+            self.selected_features = json.load(file)["feature"]
+
+        logger.info("Loaded artifact for prediction!")
+
+
+    def predict(self, context, model_input):
+        import pandas as pd
+
+        features = [feature for feature in self.selected_features if feature != "symbol"]
+        X_features = model_input[features]
+
+        matrix_encoded = self.encoder.transform(model_input["symbol"])
+        symbol_columns = self.encoder.get_feature_names_out(["symbol"])
+        df_encoded = pd.DataFrame(matrix_encoded, columns=symbol_columns, index=model_input.index)
+
+        final_df = pd.concat([X_features, df_encoded], axis=1)
+        final_df = final_df.reindex(sorted(final_df.columns), axis=1)
+
+        prediction_class = self.model.predict(final_df)
+        prediction_proba = self.model.predict_proba(final_df)
+
+        return {
+            "prediction_class": prediction_class[0],
+            "prediction_proba_up": prediction_proba[:, 1],
+            "prediction_proba_down": prediction_proba[:, 0],
+        }
+
 
 
 def log_section(title: str):
