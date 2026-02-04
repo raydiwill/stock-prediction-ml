@@ -31,7 +31,17 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
-class StockPredictionModel(mlflow.pyfunc.PyFuncModel):
+class StockPredictionModel(mlflow.pyfunc.PythonModel):
+    """
+    Custom MLflow PyFunc wrapper that bundles model + encoder + feature config.
+    
+    This class is used by mlflow.pyfunc.log_model() to create a self-contained
+    model artifact that includes all dependencies needed for inference.
+    
+    The load_context() method is called when loading the model and receives
+    the artifacts dict that was passed to log_model().
+    """
+    
     def load_context(self, context):
         import json
         import joblib
@@ -43,7 +53,7 @@ class StockPredictionModel(mlflow.pyfunc.PyFuncModel):
         self.encoder = joblib.load(context.artifacts["encoder_path"])
 
         with open(context.artifacts["feature_path"], "r") as file:
-            self.selected_features = json.load(file)["feature"]
+            self.selected_features = json.load(file)["features"]
 
         logger.info("Loaded artifact for prediction!")
 
@@ -54,7 +64,7 @@ class StockPredictionModel(mlflow.pyfunc.PyFuncModel):
         features = [feature for feature in self.selected_features if feature != "symbol"]
         X_features = model_input[features]
 
-        matrix_encoded = self.encoder.transform(model_input["symbol"])
+        matrix_encoded = self.encoder.transform(model_input[["symbol"]])
         symbol_columns = self.encoder.get_feature_names_out(["symbol"])
         df_encoded = pd.DataFrame(matrix_encoded, columns=symbol_columns, index=model_input.index)
 
@@ -64,12 +74,11 @@ class StockPredictionModel(mlflow.pyfunc.PyFuncModel):
         prediction_class = self.model.predict(final_df)
         prediction_proba = self.model.predict_proba(final_df)
 
-        return {
-            "prediction_class": prediction_class[0],
+        return pd.DataFrame({
+            "prediction_class": prediction_class.flatten(),
             "prediction_proba_up": prediction_proba[:, 1],
             "prediction_proba_down": prediction_proba[:, 0],
-        }
-
+        })
 
 
 def log_section(title: str):
@@ -586,12 +595,138 @@ def clean_up_resources(config: dict) -> None:
         logger.info("Cleaned up model resources!")
 
 
-def save_model_artifacts_local():
-    pass
+def save_model_artifacts_locally(
+    model: CatBoostClassifier,
+    encoder: OneHotEncoder,
+    selected_features: list[str],
+    temp_dir: Path,
+) -> dict[str, str]:
+    """
+    Save model artifacts to local temp files for bundling into pyfunc.
+    
+    This function prepares all artifacts needed by StockPredictionModel.load_context():
+    - model.cbm (CatBoost native format)
+    - encoder.pkl (OneHotEncoder via joblib)
+    - selected_features.json (feature names)
+    
+    Args:
+        model: Trained CatBoost model
+        encoder: Fitted OneHotEncoder
+        selected_features: List of feature names used for training
+        temp_dir: Directory to save temporary artifacts
+    
+    Returns:
+        dict: Mapping of artifact keys to file paths for mlflow.pyfunc.log_model()
+            Keys must match what StockPredictionModel.load_context() expects:
+            {
+                "model_path": "/tmp/catboost_model.cbm",
+                "encoder_path": "/tmp/ohe.pkl",
+                "feature_path": "/tmp/selected_features.json",
+            }
+    
+    Example:
+        >>> artifact_paths = save_model_artifacts_locally(model, encoder, features, Path("/tmp"))
+        >>> mlflow.pyfunc.log_model(
+        ...     artifact_path="model",
+        ...     python_model=StockPredictionModel(),
+        ...     artifacts=artifact_paths,
+        ... )
+    """
+    # Create temp_dir if it doesn't exist
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save CatBoost model in native format
+    model_path = temp_dir / "catboost_model.cbm"
+    model.save_model(fname=str(model_path))
+    logger.info(f"Saved CatBoost model to {model_path}")
+    
+    # Save encoder with joblib
+    encoder_path = temp_dir / "ohe.pkl"
+    joblib.dump(encoder, encoder_path)
+    logger.info(f"Saved OneHotEncoder to {encoder_path}")
+    
+    # Save selected_features as JSON (wrap in {"features": [...]})
+    feature_path = temp_dir / "selected_features.json"
+    with open(feature_path, "w") as file:
+        json.dump({"features": selected_features}, file)
+    logger.info(f"Saved selected features to {feature_path}")
+
+    # Return dict with keys matching what load_context() expects
+    return {
+        "model_path": str(model_path),
+        "encoder_path": str(encoder_path),
+        "feature_path": str(feature_path),
+    }
 
 
-def register_model_to_registry():
-    pass
+def promote_model_with_alias(
+    model_name: str,
+    version: int,
+    test_metrics: dict[str, float],
+) -> str | None:
+    """
+    Assign alias to a registered model version based on performance metrics.
+    
+    This function is called AFTER log_model() with registered_model_name parameter,
+    which already creates the model version. This function only handles alias assignment.
+    
+    Args:
+        model_name: Name of the registered model (e.g., "stock_prediction_classifier")
+        version: Version number to potentially promote (from log_model return value)
+        test_metrics: Evaluation metrics for promotion decision
+            Expected keys: "test_accuracy", "test_roc_auc"
+    
+    Returns:
+        str | None: The alias assigned ("champion", "challenger") or None if below thresholds
+    
+    Promotion thresholds:
+        - "champion": AUC >= 0.60 AND Accuracy >= 0.55
+        - "challenger": AUC >= 0.55 AND Accuracy >= 0.52
+        - None: Below thresholds
+    
+    Loading models by alias:
+        - Champion: mlflow.pyfunc.load_model("models:/{model_name}@champion")
+        - Challenger: mlflow.pyfunc.load_model("models:/{model_name}@challenger")
+    
+    Example:
+        >>> alias = promote_model_with_alias(
+        ...     model_name="stock_prediction_classifier",
+        ...     version=3,
+        ...     test_metrics={"test_accuracy": 0.58, "test_roc_auc": 0.62},
+        ... )
+        >>> print(f"Assigned alias: {alias}")  # "champion"
+    """
+    client = MlflowClient()
+    
+    # Define promotion thresholds
+    CHAMPION_THRESHOLD = {"auc": 0.70, "accuracy": 0.65}
+    CHALLENGER_THRESHOLD = {"auc": 0.65, "accuracy": 0.60}
+    
+    # TODO: Step 1 - Extract metrics from test_metrics dict
+    test_accuracy = test_metrics.get("test_accuracy", 0)
+    test_auc_roc = test_metrics.get("test_roc_auc", 0)
+    
+    # TODO: Step 2 - Determine which alias (if any) based on thresholds
+    alias = None
+    if test_accuracy >= CHAMPION_THRESHOLD["accuracy"] and test_auc_roc >= CHAMPION_THRESHOLD["auc"]:
+        alias = "champion"
+    elif test_accuracy >= CHALLENGER_THRESHOLD["accuracy"] and test_auc_roc >= CHALLENGER_THRESHOLD["auc"]:
+        alias = "challenger"
+
+    # TODO: Step 3 - If alias is None, log warning and return None
+    if not alias:
+        logger.warning(f"Metrics below thresholds - no alias assigned")
+        return None
+    
+    # TODO: Step 4 - Set the alias on the model version
+    client.set_registered_model_alias(name=model_name, alias=alias, version=version)
+    
+    # TODO: Step 5 - Add description with metrics to the model version
+    client.update_model_version(name=model_name, version=str(version), description=f"Accuracy: {test_accuracy}; AUC ROC: {test_auc_roc}")
+    
+    # TODO: Step 6 - Log success message and return the alias
+    logger.info(f"Set alias '{alias}' on version {version}")
+    return alias
 
 
 def main(config_path: str | Path | None = None):
@@ -626,17 +761,22 @@ def main(config_path: str | Path | None = None):
     logger.info(f"Selected features: {len(selected_features)} features")
 
     log_section("Starting MLflow experiment")
+
     # Extract MLflow settings from nested dict; fall back to defaults
     tracking_uri = settings.mlflow_tracking_uri
     mlflow_config = config.get("mlflow", {})
-    experiment_name = mlflow_config.get("experiment_name", "stock_prediction")
+    experiment_name = mlflow_config.get("experiment_name", "Stock_Prediction_Experiment")
     run_name = mlflow_config.get("run_name", None)
 
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
+    
+    # Get model name from config for Model Registry
+    model_name = mlflow_config.get("registered_model_name", "stock_prediction_classifier")
 
-    with mlflow.start_run(run_name=run_name):
-        logger.info(f"MLflow run ID: {mlflow.active_run().info.run_id}")
+    with mlflow.start_run(run_name=run_name) as run:
+        run_id = run.info.run_id  # Capture run_id for later use
+        logger.info(f"MLflow run ID: {run_id}")
         logger.info(f"MLflow tracking URI: {tracking_uri}")
         logger.info(f"MLflow experiment: {experiment_name}")
 
@@ -692,7 +832,8 @@ def main(config_path: str | Path | None = None):
 
         log_section("Evaluating model")
         mlflow.log_metrics(evaluate_model(model, X_val, y_val, prefix="val"))
-        mlflow.log_metrics(evaluate_model(model, X_test, y_test, prefix="test"))
+        test_metrics = evaluate_model(model, X_test, y_test, prefix="test")  # Capture for promotion
+        mlflow.log_metrics(test_metrics)
 
         log_section("Generating diagnostics")
         y_test_pred = model.predict(X_test)
@@ -709,13 +850,64 @@ def main(config_path: str | Path | None = None):
         mlflow.log_artifact(str(roc_plot), artifact_path="diagnostics")
 
         log_section("Saving model")
-        signature = infer_signature(X_train, model.predict(X_train))
-        mlflow.catboost.log_model(
-            model, name="catboost_model", signature=signature, input_example=X_train[:5]
+        
+        # 1. Save artifacts locally
+        temp_dir = Path("tmp")
+        
+        # Get feature names WITHOUT the encoded symbol columns
+        raw_features = [feature for feature in selected_features if not feature.startswith("symbol_")]
+        
+        artifact_paths = save_model_artifacts_locally(
+            model, encoder, raw_features, temp_dir
         )
+        
+        # 2. Create proper signature for raw input (before encoding)
+        # Input: raw features + symbol column
+        # Output: predictions dict
+        input_columns = raw_features + ["symbol"]
+        
+        # Get a sample of raw data (before encoding) for input example
+        raw_sample_df = train_val_df.head(5)[input_columns].copy()
+        
+        signature = infer_signature(
+            model_input=raw_sample_df,
+            model_output=pd.DataFrame({
+                "prediction_class": [0],
+                "prediction_proba_up": [0.5],
+                "prediction_proba_down": [0.5],
+            })
+        )
+        
+        # 3. Log the custom pyfunc model AND register to Model Registry in one step
+        model_info = mlflow.pyfunc.log_model(
+            name="catboost_model",
+            python_model=StockPredictionModel(),
+            artifacts=artifact_paths,
+            signature=signature,
+            input_example=raw_sample_df,
+            registered_model_name=model_name
+        )
+        
+        # Get the registered model version from model_info
+        model_version = model_info.registered_model_version
+        logger.info(f"Registered model '{model_name}' version {model_version}")
 
         log_section("Training complete")
         logger.info(f"View results: mlflow ui --backend-store-uri {tracking_uri}")
+
+    # Promote model with alias based on metrics
+    log_section("Promoting model")
+    alias = promote_model_with_alias(
+        model_name=model_name,
+        version=int(model_version),
+        test_metrics=test_metrics,
+    )
+
+    # Log helpful message for how to load the model:
+    if alias:
+        logger.info(f"Load with: mlflow.pyfunc.load_model('models:/{model_name}@{alias}')")
+    else:
+        logger.info(f"Load with: mlflow.pyfunc.load_model('models:/{model_name}/{model_version}')")
 
     # Clean up resources
     log_section("Clean up")
