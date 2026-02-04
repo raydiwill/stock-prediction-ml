@@ -47,12 +47,11 @@ class PredictionResponse(BaseModel):
         default_factory=datetime.utcnow,
         description="UTC timestamp when prediction was made",
     )
-    model_version: str = Field(..., example="catboost_20250130")
+    model_version: str = Field(..., example="1")
 
 
 class HealthResponse(BaseModel):
     status: str = Field(..., example="healthy")
     model_loaded: bool
     feast_online_store: bool
-    encoder_loaded: bool
-    model_version: str | None = Field(None, example="catboost_20250130")
+    model_version: str | None = Field(None, example="1")
