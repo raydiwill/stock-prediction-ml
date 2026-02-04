@@ -10,9 +10,10 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **Database layer**: SQLAlchemy models for raw stock data, predictions, and model metadata storage
 - ✅ **Model training**: CatBoost classifier with time-series split, one-hot encoding, early stopping
 - ✅ **Experiment tracking**: MLflow integration for metrics, artifacts, and model versioning
+- ✅ **Model Registry**: MLflow pyfunc wrapper bundling model + encoder + features with alias-based promotion
 - ✅ **Testing suite**: Pytest with synthetic fixtures for CI/CD (13+ test modules)
 - ✅ **Feature store**: Feast feature definitions, materialization pipeline, online store (SQLite) with 203+ feature records
-- 🚧 **REST API**: FastAPI skeleton in place (health check and predict endpoints stubbed, needs Feast integration)
+- 🚧 **REST API**: FastAPI skeleton in place (needs Model Registry + Feast online store integration)
 - ❌ **Orchestration**: Airflow DAGs not implemented
 - ❌ **Monitoring**: Grafana/Prometheus stack not implemented
 - ❌ **UI**: Streamlit demo not implemented
@@ -20,7 +21,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 ## Primary stack
 **Core**: Python 3.13, pandas, numpy, scikit-learn, CatBoost, XGBoost, LightGBM, RandomForest
 
-**MLOps**: MLflow (experiment tracking), Great Expectations (data validation), Feast (feature store), pytest
+**MLOps**: MLflow (experiment tracking + model registry), Great Expectations (data validation), Feast (feature store), pytest
 
 **Database**: SQLAlchemy ORM with SQLite (dev), support for PostgreSQL
 
@@ -29,7 +30,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 **Planned**: Docker, Airflow, Grafana, Streamlit
 
 ## Current status
-### ✅ Completed (85%)
+### ✅ Completed (90%)
 1. **Data ingestion** ([`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py))
    - Fetch EOD data from MarketStack API with pagination
    - Save to parquet format in `data/raw/`
@@ -64,10 +65,10 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - `load_training_data_from_feast()`: Retrieves historical features from Feast offline store
      - Point-in-time correct joins via `get_historical_features()` API
      - Configurable feature service (default: `stock_training_service`)
-     - Alternative `load_raw_training_data()` for backward compatibility (deprecated)
    - **Preprocessing**:
      - Time-based train/val/test split using date quantiles (default 90/5/5)
-     - OneHotEncoder for `symbol` feature (fit on train only, saved to `data/meta/ohe.pkl`)
+     - `fit_encoder()`: Fits OneHotEncoder on train only (in-memory, no disk save)
+     - `transform_with_encoder()`: Applies encoder to any split
      - Selected features loaded from `data/meta/selected_features.json`
    - **Training**:
      - CatBoost classifier with early stopping (50 rounds on validation set)
@@ -77,18 +78,40 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Metrics: accuracy and ROC-AUC for both validation and test sets
      - Confusion matrix, ROC curve, feature importance plots
    - **MLflow integration**:
-     - Logs params, metrics, artifacts (config, encoder, plots)
-     - Saves CatBoost model in native `.cbm` format
-     - Model signature inference for deployment
+     - Logs params, metrics, artifacts (config, diagnostics)
+     - Custom pyfunc model with bundled artifacts (see Model Registry below)
 
-6. **Experimentation** (notebooks 01-06)
+6. **Model Registry** ([`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py))
+   - **Custom PyFunc Wrapper** (`StockPredictionModel` class):
+     - Bundles CatBoost model + OneHotEncoder + selected features into single artifact
+     - `load_context()`: Loads all dependencies from artifact paths
+     - `predict()`: Applies encoding + prediction in one step (API-ready)
+   - **Artifact Bundling** (`save_model_artifacts_locally()`):
+     - Saves model as native `.cbm` format
+     - Saves encoder as `joblib` pickle
+     - Saves feature list as JSON
+     - Returns artifact paths dict for `mlflow.pyfunc.log_model()`
+   - **Registration**:
+     - `mlflow.pyfunc.log_model(..., registered_model_name=...)` registers in one step
+     - Model URI: `models:/{model_name}/{version}` or `models:/{model_name}@{alias}`
+   - **Alias-based Promotion** (`promote_model_with_alias()`):
+     - `champion`: test_accuracy >= 0.65 AND test_roc_auc >= 0.70
+     - `challenger`: test_accuracy >= 0.60 AND test_roc_auc >= 0.65
+     - Adds description with metrics to model version
+   - **API Loading Pattern**:
+     ```python
+     model = mlflow.pyfunc.load_model("models:/stock_prediction_classifier@champion")
+     predictions = model.predict(raw_input_df)  # Encoding handled internally
+     ```
+
+7. **Experimentation** (notebooks 01-06)
    - [`notebooks/01_api_pull.ipynb`](notebooks/01_api_pull.ipynb): API exploration and data pull
    - [`notebooks/02_data_validation.ipynb`](notebooks/02_data_validation.ipynb): Great Expectations setup
    - [`notebooks/04_feature_engineering.ipynb`](notebooks/04_feature_engineering.ipynb): Feature creation prototypes
    - [`notebooks/05_baseline.ipynb`](notebooks/05_baseline.ipynb): Baseline models and feature selection (permutation importance)
    - [`notebooks/06_tuning.ipynb`](notebooks/06_tuning.ipynb): Optuna hyperparameter tuning for RF, XGBoost, LightGBM, CatBoost
 
-7. **Testing** ([`tests/`](tests/))
+8. **Testing** ([`tests/`](tests/))
    - Synthetic fixtures for hermetic CI tests
    - Pytest markers: `@pytest.mark.slow` for integration tests.
    - Test coverage:
@@ -99,7 +122,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Training pipeline ([`test_train.py`](tests/test_train.py)) - 26 tests including Feast data loading
      - Feast feature store ([`test_feast.py`](tests/test_feast.py)) - Entity/view schemas, materialization, retrieval
 
-8. **Feature Store** ([`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/))
+9. **Feature Store** ([`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/))
    - **Infrastructure**:
      - Feast SDK v0.50.0+ configured with file-based offline store (parquet + DuckDB)
      - SQLite online store for low-latency feature serving
@@ -123,12 +146,16 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Data range: 2024-2025 EOD stock data
      - Online store ready for real-time feature retrieval in API endpoints
 
-### 🚧 In Progress (10%)
+### 🚧 In Progress (5%)
 1. **REST API** ([`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py))
    - FastAPI skeleton with CORS middleware
    - Health check endpoint (stub)
-   - Predict endpoint (stub, needs Feast integration for feature retrieval)
-   - Schema definitions ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py)) placeholder
+   - Predict endpoint (stub)
+   - **Next steps**:
+     - Load model from registry: `mlflow.pyfunc.load_model("models:/...@champion")`
+     - Integrate Feast online store for real-time feature retrieval
+     - No separate encoder loading needed (bundled in pyfunc)
+   - Schema definitions ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py))
 
 ### ❌ Not Started (5%)
 1. **Orchestration**: Airflow DAGs for automated pipeline execution
@@ -142,16 +169,17 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - **Memory efficiency**: DuckDB/Postgres for offline store (local dev compatible)
 - **Open-source first**: No proprietary feature stores or cloud-only solutions
 - **CI/CD ready**: All tests run in GitHub Actions without external data dependencies
-- **Model format**: Native CatBoost `.cbm` (not pickled) for forward compatibility
+- **Model format**: Native CatBoost `.cbm` wrapped in MLflow pyfunc for self-contained serving
 
 ## Important files
 ### Core modules
 - [`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py): API ingestion with pagination and parquet output
 - [`src/stock_prediction_ml/data_validation/validation.py`](src/stock_prediction_ml/data_validation/validation.py): Great Expectations validation suite
 - [`src/stock_prediction_ml/features/build_features.py`](src/stock_prediction_ml/features/build_features.py): Feature engineering pipeline
-- [`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py): End-to-end training with Feast + MLflow integration
+- [`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py): Training + Model Registry with pyfunc bundling
 - [`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py): Database ingestion with deduplication
 - [`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/): Feature store infrastructure (Feast SDK)
+- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): FastAPI application (in progress)
 
 ### Configuration
 - [`configs/training/local.yaml`](configs/training/local.yaml): Training configuration (paths, hyperparameters, Feast service, MLflow settings)
@@ -223,9 +251,10 @@ Feature vector (34 features after encoding `symbol`):
 - `test_read_validated_file_default_path`: Default path resolution works
 
 ✅ **Training**:
-- `test_load_config_returns_dict_with_expected_keys`: Config parsing validates (includes `feast_service_name`)
-- `test_load_training_data_from_feast_*`: Feast offline store data loading (3 tests with temp repo fixtures)
-- `test_fit_and_save_encoder`: Encoder fits and saves correctly
+- `test_load_config_returns_dict_with_expected_keys`: Config parsing validates
+- `test_load_training_data_from_feast_*`: Feast offline store data loading (3 tests)
+- `test_fit_encoder_returns_encoder`: Encoder fits correctly (in-memory)
+- `test_transform_with_encoder_adds_ohe_columns`: Encoding applied correctly
 - `test_train_model`: Model trains and achieves >50% accuracy on synthetic data
 - `test_evaluate_model`: Metrics (accuracy, ROC-AUC) computed correctly
 
@@ -246,7 +275,13 @@ Feature vector (34 features after encoding `symbol`):
 - **Temporal splits over random splits**: Date quantiles (90/5/5) prevent leakage in time-series data
 - **Native CatBoost format**: `.cbm` files avoid pickle compatibility issues across Python versions
 - **MLflow for lineage**: Tracks experiments, models, and artifacts in local filesystem (upgradeable to remote)
-- **Encoder persistence**: OneHotEncoder saved separately to enable inference without retraining
+- **Bundled artifacts**: Encoder + features bundled with model in pyfunc (simplifies API loading)
+
+### Model Registry approach
+- **Pyfunc wrapper**: `StockPredictionModel` class encapsulates all inference dependencies
+- **Artifact bundling**: Model, encoder, and feature list saved to temp dir, then logged as single artifact
+- **Alias-based promotion**: `champion`/`challenger` aliases instead of stages (MLflow 2.9+ pattern)
+- **API simplification**: Single `mlflow.pyfunc.load_model()` call replaces 3 separate artifact downloads
 
 ### Data pipeline
 - **Deduplication via hashing**: `(symbol, date, ohlc, volume)` hashed to prevent duplicate inserts
@@ -273,12 +308,52 @@ Feature vector (34 features after encoding `symbol`):
 - **Deterministic**: Fixed random seeds ensure reproducible test outcomes
 
 ### Future tech debt
-- **API implementation**: Stub endpoints need model loading and Feast online store integration for real-time predictions
+- **API implementation**: Complete Feast online store integration for real-time feature retrieval
 - **Production Feast tests**: Add `@pytest.mark.integration` tests using production feature store (not temp fixtures)
 - **Incremental materialization**: Implement daily `materialize-incremental` workflow for feature updates
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
 - **Containerization**: Docker Compose for local dev and production deployment
+
+---
+
+## API Implementation Guide (Next Task)
+
+### Overview
+The API needs to:
+1. Load the registered model from MLflow Model Registry on startup
+2. Retrieve features from Feast online store for incoming requests
+3. Return predictions with confidence scores
+
+### Key Changes from Previous Approach
+| Before (Broken) | After (Registry-based) |
+|-----------------|------------------------|
+| Download 3 separate artifacts | Load single pyfunc model |
+| Manual encoder loading | Encoding bundled in `predict()` |
+| Construct feature vector manually | Feast online store retrieval |
+| Load by run_id | Load by model name + alias |
+
+### API Startup Flow
+```
+1. Set MLflow tracking URI
+2. Load model: mlflow.pyfunc.load_model("models:/stock_prediction_classifier@champion")
+3. Initialize Feast FeatureStore
+4. Ready to serve
+```
+
+### Predict Endpoint Flow
+```
+1. Receive request: {symbol: "AAPL", date: "2025-01-15"}
+2. Fetch features from Feast online store
+3. Combine raw features into DataFrame
+4. Call model.predict(features_df)  # Encoding handled internally
+5. Return: {prediction: "UP", probability: 0.647}
+```
+
+### Files to Modify
+- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): Lifespan + endpoints
+- [`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py): Request/response models
+- [`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py): Add model_alias setting
 
 ---
 
