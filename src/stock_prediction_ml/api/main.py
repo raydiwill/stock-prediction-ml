@@ -1,17 +1,16 @@
 import logging
-import mlflow
-import pandas as pd
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import mlflow
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from mlflow import MlflowClient
 
-from stock_prediction_ml.api.schema import StockRequest, HealthResponse, PredictionResponse
+from stock_prediction_ml.api.schema import HealthResponse, PredictionResponse, StockRequest
 from stock_prediction_ml.api.utils import check_dependencies
 from stock_prediction_ml.config.settings import settings
-
 
 # --- Logging Setup ---
 logging.basicConfig(
