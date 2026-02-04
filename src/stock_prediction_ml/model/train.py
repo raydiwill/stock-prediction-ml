@@ -568,7 +568,7 @@ def clean_up_resources() -> None:
     if catboost_dir.exists():
         try:
             shutil.rmtree(catboost_dir)
-            logger.info("Cleaned up CatBoost info folder")
+            logger.info("Cleaned up CatBoost folder!")
         except Exception as e:
             logger.warning(f"Failed to delete folder {catboost_dir}: {e}")
 
