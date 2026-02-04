@@ -1,6 +1,5 @@
 import json
 
-import joblib
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,13 +10,13 @@ from sklearn.preprocessing import OneHotEncoder
 from stock_prediction_ml.model.train import (
     build_X_y,
     evaluate_model,
-    fit_and_save_encoder,
-    load_and_transform_with_encoder,
+    fit_encoder,
     load_config,
     load_selected_features,
     load_training_data_from_feast,
     split_data_train_test,
     train_model,
+    transform_with_encoder,
 )
 
 # ==================== FIXTURES ====================
@@ -48,7 +47,7 @@ def test_config_path(tmp_path):
 @pytest.fixture
 def raw_df(tmp_path, test_config_path):
     """Generate synthetic training data for tests.
-    
+
     Returns a DataFrame with date, symbol, return, and target columns
     suitable for testing the training pipeline.
     """
@@ -198,9 +197,9 @@ def train_val_test_split(raw_df):
 
 @pytest.fixture
 def fitted_encoder_tuple(train_test_split, tmp_path):
-    """Fit and save encoder, return (encoder_object, meta_dir)."""
+    """Fit encoder and return (encoder_object, meta_dir for legacy compat)."""
     train, _ = train_test_split
-    encoder = fit_and_save_encoder(train, meta_dir=tmp_path)
+    encoder = fit_encoder(train)
     return encoder, tmp_path
 
 
@@ -208,12 +207,12 @@ def fitted_encoder_tuple(train_test_split, tmp_path):
 def encoded_data(train_val_test_split, fitted_encoder_tuple):
     """Return encoded train, val, test DataFrames using in-memory encoder."""
     train, val, test = train_val_test_split
-    encoder, meta_dir = fitted_encoder_tuple
+    encoder, _ = fitted_encoder_tuple
 
-    # Test passing the encoder object directly
-    train_encoded = load_and_transform_with_encoder(train, encoder=encoder)
-    val_encoded = load_and_transform_with_encoder(val, encoder=encoder)
-    test_encoded = load_and_transform_with_encoder(test, encoder=encoder)
+    # Transform using the fitted encoder
+    train_encoded = transform_with_encoder(train, encoder)
+    val_encoded = transform_with_encoder(val, encoder)
+    test_encoded = transform_with_encoder(test, encoder)
 
     return train_encoded, val_encoded, test_encoded
 
@@ -240,9 +239,7 @@ def X_y_data(encoded_data, selected_features):
 def trained_model(X_y_data, config):
     """Return trained model and info."""
     (X_train, y_train), (X_val, y_val), _ = X_y_data
-    model, info = train_model(
-        X_train, y_train, X_val, y_val, params=config.get("model_params", {})
-    )
+    model, info = train_model(X_train, y_train, X_val, y_val, params=config.get("model_params", {}))
     return model, info
 
 
@@ -369,22 +366,18 @@ def test_split_data_train_test_preserves_total_row_count(train_test_split, raw_d
     assert len(raw_df) == len(train) + len(test)
 
 
-def test_fit_and_save_encoder_returns_encoder_and_saves_file(fitted_encoder_tuple):
-    """Should return encoder object AND create 'ohe.pkl' file."""
-    encoder, meta_dir = fitted_encoder_tuple
-    pkl_file = meta_dir / "ohe.pkl"
+def test_fit_encoder_returns_encoder(fitted_encoder_tuple):
+    """Should return a fitted OneHotEncoder object."""
+    encoder, _ = fitted_encoder_tuple
 
-    # Check return object
+    # Check return object is a fitted encoder
     assert isinstance(encoder, OneHotEncoder)
-
-    # Check file persistence
-    assert pkl_file.exists()
-    with open(pkl_file, "rb") as f:
-        loaded_encoder = joblib.load(f)
-    assert isinstance(loaded_encoder, OneHotEncoder)
+    # Verify it's fitted by checking categories exist
+    assert hasattr(encoder, "categories_")
+    assert len(encoder.categories_[0]) > 0
 
 
-def test_load_and_transform_with_encoder_adds_ohe_columns(encoded_data):
+def test_transform_with_encoder_adds_ohe_columns(encoded_data):
     """Should add one-hot encoded columns and drop original 'symbol'."""
     train_encoded, _, _ = encoded_data
 
