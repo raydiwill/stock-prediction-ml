@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import mlflow
+from mlflow.tracking import MlflowClient
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from mlflow import MlflowClient
+from feast import FeatureStore
 
 from stock_prediction_ml.api.schema import HealthResponse, PredictionResponse, StockRequest
 from stock_prediction_ml.api.utils import check_dependencies
@@ -22,116 +23,70 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FEAST_REPO_PATH = PROJECT_ROOT / "src" / "stock_prediction_ml" / "feast_repo"
+MLRUNS_PATH = PROJECT_ROOT / "mlruns"
 
 # --- Global Variables (loaded on startup) ---
-MODEL = None
-ENCODER = None
+MODEL = None  # pyfunc model (bundles encoder + features internally)
+REGISTERED_MODEL_NAME = "stock_prediction_classifier"
 FEAST_STORE = None
 FEAST_SERVICE_NAME = "stock_prediction_service"
-SELECTED_FEATURES = None
-MODEL_VERSION = "catboost_02012025"
+MODEL_VERSION = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Load all dependencies from MLflow on startup.
+    Load pyfunc model from Model Registry and Feast store on startup.
     """
-    global MODEL, ENCODER, FEAST_STORE, SELECTED_FEATURES, MODEL_VERSION
+    global MODEL, FEAST_STORE, MODEL_VERSION
 
     logger.info("=" * 60)
     logger.info("Starting Stock Prediction API...")
     logger.info("=" * 60)
 
-    # TODO: Task 4.0 - Set MLflow tracking URI and get experiment
-    # Hint: mlflow.set_tracking_uri("file:///path/to/mlruns")
-    # Hint: Use PROJECT_ROOT / "mlruns"
-    # Hint: Get client with MlflowClient()
+    # Task 1: Set MLflow tracking URI
     try:
         logger.info("Connecting to MLflow...")
-        # YOUR CODE HERE - Set tracking URI
-        tracking_uri = mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-        # YOUR CODE HERE - Create MLflow client
+        tracking_uri = f"file://{MLRUNS_PATH}"
+        mlflow.set_tracking_uri(tracking_uri)
         client = MlflowClient(tracking_uri=tracking_uri)
     except Exception as e:
         logger.error(f"Failed to connect to MLflow: {e}")
 
-    # TODO: Task 4.1 - Get latest run from experiment
-    # Hint: Use client.search_runs(experiment_ids=[...], order_by=[...])
-    # Hint: Experiment name is likely "stock_prediction" (check your train.py)
-    # Hint: Order by "start_time DESC" to get latest run
-    # Hint: Get run_id from the first result
+    # Task 2: Load pyfunc model from Model Registry
+    # Resource: check local.yaml for registered_model_name
+    # Resource: check train.py for alias used during registration
     try:
-        logger.info("Getting latest model run from MLflow...")
-        # YOUR CODE HERE - Get experiment by name
-
-        # YOUR CODE HERE - Search runs (limit=1, order by start_time DESC)
-        # YOUR CODE HERE - Extract run_id
-        pass
-    except Exception as e:
-        logger.error(f"Failed to get MLflow run: {e}")
-
-    # TODO: Task 4.2 - Download artifacts from MLflow run
-    # Hint: Use mlflow.artifacts.download_artifacts(run_id=..., artifact_path=...)
-    # Hint: Artifact paths in your train.py: "model/catboost_model.cbm", "metadata/ohe.pkl", "metadata/selected_features.json"
-    # Hint: Downloaded files go to mlartifacts/ folder by default
-    # Hint: Store paths for later loading
-    try:
-        logger.info(f"Downloading artifacts from run {run_id}...")
-        # YOUR CODE HERE - Download model artifact
-        # YOUR CODE HERE - Download encoder artifact
-        # YOUR CODE HERE - Download features artifact
-        pass
-    except Exception as e:
-        logger.error(f"Failed to download artifacts: {e}")
-
-    # TODO: Task 4.3 - Load CatBoost model from downloaded artifact
-    # Hint: Same as before, but use the downloaded path
-    # Hint: CatBoostClassifier().load_model(downloaded_model_path)
-    try:
-        logger.info("Loading model...")
-        # YOUR CODE HERE
-        pass
+        logger.info("Loading model from Model Registry...")
+        # YOUR CODE HERE - construct model_uri and load
+        model_uri = f"models:/{REGISTERED_MODEL_NAME}@champion"
+        MODEL = mlflow.pyfunc.load_model(model_uri=model_uri)
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
 
-    # TODO: Task 4.4 - Load OneHotEncoder from downloaded artifact
-    # Hint: pickle.load() from downloaded encoder path
-    try:
-        logger.info("Loading encoder...")
-        # YOUR CODE HERE
-        pass
-    except Exception as e:
-        logger.error(f"Failed to load encoder: {e}")
-
-    # TODO: Task 4.5 - Load selected features from downloaded artifact
-    # Hint: json.load() from downloaded features path
-    try:
-        logger.info("Loading selected features...")
-        # YOUR CODE HERE
-        pass
-    except Exception as e:
-        logger.error(f"Failed to load features: {e}")
-
-    # TODO: Task 4.6 - Load Feast FeatureStore (unchanged)
-    # Hint: This doesn't come from MLflow, load from FEAST_REPO_PATH
+    # Task 3: Load Feast FeatureStore
     try:
         logger.info(f"Loading Feast store from {FEAST_REPO_PATH}...")
         # YOUR CODE HERE
-        pass
+        FEAST_STORE = FeatureStore(str(FEAST_REPO_PATH))
     except Exception as e:
         logger.error(f"Failed to load Feast store: {e}")
 
-    # TODO: Task 4.7 - Set MODEL_VERSION from MLflow run
-    # Hint: Use run.data.tags or run.info.run_id
+    # Task 4: Set MODEL_VERSION from loaded model metadata
     # YOUR CODE HERE
+    try:
+        MODEL_VERSION = client.get_model_version_by_alias(
+            name=REGISTERED_MODEL_NAME, 
+            alias="champion"
+        ).version
+    except Exception as e:
+        logger.error(f"Failed to get model version: {e}")
+        MODEL_VERSION = "unknown"
 
     logger.info("=" * 60)
     logger.info("API startup complete!")
     logger.info(f"Model loaded: {MODEL is not None}")
-    logger.info(f"Encoder loaded: {ENCODER is not None}")
     logger.info(f"Feast store loaded: {FEAST_STORE is not None}")
-    logger.info(f"Features loaded: {SELECTED_FEATURES is not None}")
     logger.info(f"Model version: {MODEL_VERSION}")
     logger.info("=" * 60)
 
@@ -161,7 +116,9 @@ async def health_check():
     """
     Health check endpoint to verify all dependencies are loaded.
     """
-    checker = check_dependencies(MODEL, FEAST_STORE, ENCODER, SELECTED_FEATURES)
+    # Task 5: Update check_dependencies call (fewer deps now)
+    # YOUR CODE HERE
+    checker = check_dependencies(MODEL, FEAST_STORE)
 
     if checker["all_loaded"]:
         status = "healthy"
@@ -177,8 +134,7 @@ async def health_check():
         status=status,
         model_loaded=checker["dependencies"]["MODEL"],
         feast_online_store=checker["dependencies"]["FEAST"],
-        encoder_loaded=checker["dependencies"]["ENCODER"],
-        model_version=MODEL_VERSION,
+        model_version=str(MODEL_VERSION),
     )
 
 
@@ -189,18 +145,18 @@ async def predict(request: StockRequest):
     """
     logger.info(f"Received prediction request: {request.symbol} on {request.date}")
 
-    # Task 3.1 - Check dependencies
-    checker = check_dependencies(MODEL, FEAST_STORE, ENCODER, SELECTED_FEATURES)
+    # Task 6.1: Check dependencies
+    checker = check_dependencies(MODEL, FEAST_STORE)
     if not checker["all_loaded"]:
         raise HTTPException(
-            status_code=503,  # Fixed: int, not string
+            status_code=503,
             detail=f"Missing dependencies: {', '.join(checker['missing_dependencies'])}",
         )
 
-    # Task 3.2 - Retrieve features from Feast
+    # Task 6.2: Retrieve features from Feast online store
     try:
         logger.info("Retrieving features from Feast online store...")
-        entity_rows = [{"symbol": request.symbol, "date": request.date}]
+        entity_rows = [{"symbol": request.symbol}]
         
         features_df = FEAST_STORE.get_online_features(
             entity_rows=entity_rows,
@@ -209,52 +165,40 @@ async def predict(request: StockRequest):
     except Exception as e:
         logger.error(f"Failed to retrieve features: {e}")
         raise HTTPException(status_code=500, detail=f"Feature retrieval failed: {str(e)}")
+    
+    # Task 6.3: Cast integer columns (SQLite returns int64, model expects int32)
+    int_columns = ["day_of_month", "day_of_week", "month"]
+    for col in int_columns:
+        if col in features_df.columns:
+            features_df[col] = features_df[col].astype("int32")
 
-    # Task 3.3 - Check if features were found
-    if len(features_df) == 0:
-        raise HTTPException(status_code=404, detail="No features found!")  # Fixed: int
-
-    # Task 3.4 - Filter to selected features
-    features_df = features_df[SELECTED_FEATURES]
-
-    # Task 3.5 - One-hot encode the symbol
-    try:
-        logger.info("Encoding symbol...")
-        symbols_df = pd.DataFrame({"symbol": [request.symbol]})
-        matrix_encoded = ENCODER.transform(symbols_df[["symbol"]])
-        symbol_columns = ENCODER.get_feature_names_out(["symbol"])
-        df_encoded = pd.DataFrame(matrix_encoded, columns=symbol_columns, index=symbols_df.index)
-    except Exception as e:
-        logger.error(f"Failed to encode symbol: {e}")
-        raise HTTPException(status_code=500, detail=f"Encoding failed: {str(e)}")
-
-    # Task 3.6 - Combine features
-    pred_df = pd.concat([features_df, df_encoded], axis=1)
-
-    # Task 3.7 - Make prediction
+    # Task 6.4: Make prediction using pyfunc model
     try:
         logger.info("Making prediction...")
-        prediction_class = MODEL.predict(pred_df)[0]  # Get scalar
-        prediction_proba = MODEL.predict_proba(pred_df)
-        probability_up = float(prediction_proba[0][1])  # P(UP)
+        # YOUR CODE HERE - pyfunc returns a DataFrame
+        model_prediction_df = MODEL.predict(features_df)
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+    
+    prediction_class = model_prediction_df['prediction_class'].iloc[0]
 
-    # Task 3.8 - Return response
     if prediction_class == 1:
         prediction_label = "UP"
-        confidence = float(prediction_proba[0][1])  # P(UP)
+        confidence = float(model_prediction_df["prediction_proba_up"].iloc[0])  # P(UP)
     else:
         prediction_label = "DOWN"
-        confidence = float(prediction_proba[0][0])  # P(DOWN)
+        confidence = float(model_prediction_df["prediction_proba_down"].iloc[0])  # P(DOWN)
 
     logger.info(f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})")
 
+    # Task 6.5: Parse pyfunc output and return response
+    # YOUR CODE HERE
     return PredictionResponse(
         symbol=request.symbol,
         date=request.date,
-        prediction=prediction_label,
-        probability=probability_up,
-        model_version=MODEL_VERSION,
+        prediction=int(prediction_class),
+        prediction_label=prediction_label,
+        probability=confidence,
+        model_version=str(MODEL_VERSION),
     )
