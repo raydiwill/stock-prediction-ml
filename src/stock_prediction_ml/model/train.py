@@ -794,14 +794,6 @@ def main(config_path: str | Path | None = None):
 
         log_section("Encoding categorical features")
         encoder = fit_and_save_encoder(train_df, meta_dir=config.get("meta_dir"))
-        mlflow.log_artifact(
-            Path(config.get("meta_dir")) / "ohe.pkl", artifact_path="meta"
-        )
-
-        mlflow.log_artifact(
-            Path(config.get("meta_dir")) / "selected_features.json",
-            artifact_path="meta",
-        )
 
         # Apply the same encoder to all splits for consistent feature space.
         train_df = load_and_transform_with_encoder(
