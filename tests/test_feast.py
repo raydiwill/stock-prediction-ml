@@ -111,9 +111,30 @@ def temp_feast_repo_path(tmp_path, sample_feature_data):
 
 @pytest.fixture
 def feast_feature_store():
+    """Initialize Feast store and apply feature definitions.
+
+    Calls store.apply() to ensure entities, feature views, and feature services
+    are registered to the Feast registry. This is required for CI/CD environments
+    where `feast apply` hasn't been run manually.
+
+    Returns:
+        FeatureStore: Initialized and applied Feast store.
+    """
     from pathlib import Path
 
     from feast import FeatureStore
+
+    from stock_prediction_ml.feast_repo.entities import stock
+    from stock_prediction_ml.feast_repo.feature_services import (
+        stock_prediction_service,
+        stock_training_service,
+    )
+    from stock_prediction_ml.feast_repo.features_definition import (
+        stock_basic_features,
+        stock_target_label,
+        stock_technical_features,
+        stock_timeseries_features,
+    )
 
     feast_repo_path = (
         Path(__file__).resolve().parents[1]
@@ -122,6 +143,19 @@ def feast_feature_store():
         / "feast_repo"
     )
     store = FeatureStore(repo_path=str(feast_repo_path))
+
+    # Apply feature definitions to registry (equivalent to `feast apply`)
+    store.apply(
+        [
+            stock,
+            stock_basic_features,
+            stock_technical_features,
+            stock_timeseries_features,
+            stock_target_label,
+            stock_prediction_service,
+            stock_training_service,
+        ]
+    )
 
     return store
 
