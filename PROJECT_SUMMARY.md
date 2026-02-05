@@ -13,7 +13,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **Model Registry**: MLflow pyfunc wrapper bundling model + encoder + features with alias-based promotion
 - ✅ **Testing suite**: Pytest with synthetic fixtures for CI/CD (13+ test modules)
 - ✅ **Feature store**: Feast feature definitions, materialization pipeline, online store (SQLite) with 203+ feature records
-- 🚧 **REST API**: FastAPI skeleton in place (needs Model Registry + Feast online store integration)
+- ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, request logging middleware
 - ❌ **Orchestration**: Airflow DAGs not implemented
 - ❌ **Monitoring**: Grafana/Prometheus stack not implemented
 - ❌ **UI**: Streamlit demo not implemented
@@ -30,7 +30,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 **Planned**: Docker, Airflow, Grafana, Streamlit
 
 ## Current status
-### ✅ Completed (90%)
+### ✅ Completed (92%)
 1. **Data ingestion** ([`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py))
    - Fetch EOD data from MarketStack API with pagination
    - Save to parquet format in `data/raw/`
@@ -146,22 +146,45 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Data range: 2024-2025 EOD stock data
      - Online store ready for real-time feature retrieval in API endpoints
 
-### 🚧 In Progress (5%)
-1. **REST API** ([`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py))
-   - FastAPI skeleton with CORS middleware
-   - Health check endpoint (stub)
-   - Predict endpoint (stub)
-   - **Next steps**:
-     - Load model from registry: `mlflow.pyfunc.load_model("models:/...@champion")`
-     - Integrate Feast online store for real-time feature retrieval
-     - No separate encoder loading needed (bundled in pyfunc)
+10. **REST API** ([`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py))
+   - **Lifecycle Management** (`lifespan` function):
+     - Startup: Loads champion model from MLflow Registry (`models:/stock_prediction_classifier@champion`)
+     - Startup: Initializes Feast FeatureStore with registry cache pre-warming
+     - Startup: Validates critical dependencies (fail-fast on missing deps via `validate_startup()`)
+     - Shutdown: Clean exit logging
+   - **Endpoints**:
+     - `GET /health`: Returns model/Feast availability status and model version
+     - `POST /predict`: Retrieves features from Feast online store → model prediction with confidence scores
+   - **Implementation Details**:
+     - Model loaded via `mlflow.pyfunc.load_model()` with alias-based lookup
+     - Feature retrieval via `FEAST_STORE.get_online_features(features=feature_service)`
+     - Type casting for SQLite int64 → int32 compatibility (model signature requirement)
+     - Pyfunc handles symbol encoding internally (no manual encoder needed)
+     - Feature validation: Returns 404 if Feast returns empty/null features
+   - **Middleware**:
+     - CORS enabled for all origins
+     - Request logging middleware tracking method, path, status, and latency
+   - **Configuration** ([`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py)):
+     - Centralized settings for model name, alias, Feast service, int columns
+     - All hardcoded constants migrated to `settings` object
    - Schema definitions ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py))
+
+### 🚧 In Progress (3%)
+1. **API Testing** ([`tests/test_api.py`](tests/test_api.py) - to be created)
+   - **Scope**: Unit tests for FastAPI endpoints with mocked dependencies
+   - **Next steps**:
+     - Mock MLflow model loading in lifespan
+     - Mock Feast FeatureStore and `get_online_features()` responses
+     - Test health check with various dependency states (all loaded, partial failures)
+     - Test predict endpoint (valid requests, missing features, model failures)
+     - Test error handling (503, 500, 422 status codes)
+     - Test startup validation (fail-fast behavior)
 
 ### ❌ Not Started (5%)
 1. **Orchestration**: Airflow DAGs for automated pipeline execution
-2. **Monitoring**: Grafana dashboards 
-3. **Deployment**: Docker containerization, model serving
-4. **UI**: Streamlit dashboard for visualization
+2. **Monitoring**: Grafana dashboards for drift detection and performance tracking
+3. **Deployment**: Docker containerization, model serving infrastructure
+4. **UI**: Streamlit dashboard for visualization and inference
 
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
@@ -308,8 +331,9 @@ Feature vector (34 features after encoding `symbol`):
 - **Deterministic**: Fixed random seeds ensure reproducible test outcomes
 
 ### Future tech debt
-- **API implementation**: Complete Feast online store integration for real-time feature retrieval
-- **Production Feast tests**: Add `@pytest.mark.integration` tests using production feature store (not temp fixtures)
+- **API integration tests**: Add `@pytest.mark.integration` tests with real Feast online store (not mocked)
+- **API data materialization**: Online store needs recent date coverage for production readiness
+- **Production Feast tests**: Add integration tests using production feature store (not temp fixtures)
 - **Incremental materialization**: Implement daily `materialize-incremental` workflow for feature updates
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
@@ -317,43 +341,88 @@ Feature vector (34 features after encoding `symbol`):
 
 ---
 
-## API Implementation Guide (Next Task)
+## API Testing Guide (Next Task)
 
 ### Overview
-The API needs to:
-1. Load the registered model from MLflow Model Registry on startup
-2. Retrieve features from Feast online store for incoming requests
-3. Return predictions with confidence scores
+Write comprehensive unit tests for the FastAPI application with **mocked external dependencies** (no real MLflow/Feast required).
 
-### Key Changes from Previous Approach
-| Before (Broken) | After (Registry-based) |
-|-----------------|------------------------|
-| Download 3 separate artifacts | Load single pyfunc model |
-| Manual encoder loading | Encoding bundled in `predict()` |
-| Construct feature vector manually | Feast online store retrieval |
-| Load by run_id | Load by model name + alias |
+### Testing Strategy
+**Mock external dependencies:**
+- MLflow model loading → Use `pytest-mock` or `unittest.mock.patch`
+- Feast FeatureStore → Mock `get_online_features()` return values
+- Hermetic tests: No real model/Feast store required (CI-friendly)
 
-### API Startup Flow
+**Test structure:**
 ```
-1. Set MLflow tracking URI
-2. Load model: mlflow.pyfunc.load_model("models:/stock_prediction_classifier@champion")
-3. Initialize Feast FeatureStore
-4. Ready to serve
+tests/test_api.py
+├── Fixtures: mock_model, mock_feast_store, test_client (FastAPI TestClient)
+├── Lifespan tests: Startup success, partial failures, validation
+├── Health check tests: All deps loaded, missing MODEL, missing FEAST_STORE
+├── Predict tests: Valid request, missing features, invalid symbol, model error
+└── Edge cases: Empty features, null features, type casting
 ```
 
-### Predict Endpoint Flow
-```
-1. Receive request: {symbol: "AAPL", date: "2025-01-15"}
-2. Fetch features from Feast online store
-3. Combine raw features into DataFrame
-4. Call model.predict(features_df)  # Encoding handled internally
-5. Return: {prediction: "UP", probability: 0.647}
+### Key Test Cases
+
+#### 1. Startup Validation (`test_lifespan_*`)
+- ✅ All dependencies load successfully → API starts
+- ❌ Model fails to load → RuntimeError raised
+- ❌ Feast fails to load → RuntimeError raised
+
+#### 2. Health Check Endpoint (`test_health_*`)
+- ✅ All dependencies loaded → `{"status": "healthy", "model_loaded": true, "feast_online_store": true}`
+- ❌ Model missing → `{"status": "unhealthy", "model_loaded": false}`
+- ❌ Feast missing → `{"status": "unhealthy", "feast_online_store": false}`
+
+#### 3. Predict Endpoint (`test_predict_*`)
+- ✅ Valid request → Returns `{"prediction": 1, "prediction_label": "UP", "probability": 0.65}`
+- ❌ Feast returns empty DataFrame → HTTP 404 with helpful error message
+- ❌ Feast returns all-NaN features → HTTP 404
+- ❌ Model prediction fails → HTTP 500
+- ❌ Dependencies not loaded → HTTP 503
+
+#### 4. Request Logging Middleware (`test_middleware_*`)
+- ✅ Logs include method, path, status code, duration
+
+### Mocking Examples
+
+**Mock model loading:**
+```python
+@pytest.fixture
+def mock_mlflow_load(mocker):
+    mock_model = mocker.MagicMock()
+    mock_model.predict.return_value = pd.DataFrame({
+        "prediction_class": [1],
+        "prediction_proba_up": [0.65],
+        "prediction_proba_down": [0.35]
+    })
+    mocker.patch("mlflow.pyfunc.load_model", return_value=mock_model)
+    return mock_model
 ```
 
-### Files to Modify
-- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): Lifespan + endpoints
-- [`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py): Request/response models
-- [`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py): Add model_alias setting
+**Mock Feast FeatureStore:**
+```python
+@pytest.fixture
+def mock_feast_store(mocker):
+    mock_store = mocker.MagicMock()
+    mock_features = pd.DataFrame({
+        "symbol": ["AAPL"],
+        "close": [150.0],
+        "volume": [1000000],
+        # ... other features
+    })
+    mock_store.get_online_features.return_value.to_df.return_value = mock_features
+    mocker.patch("feast.FeatureStore", return_value=mock_store)
+    return mock_store
+```
+
+### Files to Create
+- [`tests/test_api.py`](tests/test_api.py): Main test module for API endpoints
+
+### Resources
+- FastAPI Testing: https://fastapi.tiangolo.com/tutorial/testing/
+- Pytest-mock: https://pytest-mock.readthedocs.io/
+- Your existing patterns: [`tests/test_train.py`](tests/test_train.py) for mocking examples
 
 ---
 
