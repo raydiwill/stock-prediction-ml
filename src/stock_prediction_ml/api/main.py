@@ -23,18 +23,20 @@ Example:
 """
 
 import logging
-from collections.abc import AsyncGenerator
+import time
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import mlflow
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from feast import FeatureStore
 from mlflow.tracking import MlflowClient
 
 from stock_prediction_ml.api.schema import HealthResponse, PredictionResponse, StockRequest
 from stock_prediction_ml.api.utils import check_dependencies
+from stock_prediction_ml.config.settings import settings
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -50,10 +52,27 @@ MLRUNS_PATH = PROJECT_ROOT / "mlruns"
 
 # --- Global Variables (loaded on startup) ---
 MODEL = None  # pyfunc model (bundles encoder + features internally)
-REGISTERED_MODEL_NAME = "stock_prediction_classifier"
 FEAST_STORE = None
-FEAST_SERVICE_NAME = "stock_prediction_service"
 MODEL_VERSION = None
+
+
+def validate_startup() -> None:
+    """Validate critical dependencies are loaded.
+
+    Raises:
+        RuntimeError: If any critical dependency failed to load.
+    """
+    missing = []
+    if MODEL is None:
+        missing.append("MODEL")
+    if FEAST_STORE is None:
+        missing.append("FEAST_STORE")
+
+    if missing:
+        raise RuntimeError(
+            f"Failed to load critical dependencies: {', '.join(missing)}. "
+            "API cannot start without these."
+        )
 
 
 @asynccontextmanager
@@ -95,7 +114,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load pyfunc model from Model Registry
     try:
         logger.info("Loading model from Model Registry...")
-        model_uri = f"models:/{REGISTERED_MODEL_NAME}@champion"
+        model_uri = f"models:/{settings.registered_model_name}@{settings.model_alias}"
         MODEL = mlflow.pyfunc.load_model(model_uri=model_uri)
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
@@ -104,18 +123,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         logger.info(f"Loading Feast store from {FEAST_REPO_PATH}...")
         FEAST_STORE = FeatureStore(str(FEAST_REPO_PATH))
+        # Pre-warm registry cache as it frequently expired
+        _ = FEAST_STORE.list_feature_views()
+        logger.info("Feast registry cache pre-warmed")
     except Exception as e:
         logger.error(f"Failed to load Feast store: {e}")
 
     # Set MODEL_VERSION from loaded model metadata
     try:
         MODEL_VERSION = client.get_model_version_by_alias(
-            name=REGISTERED_MODEL_NAME, 
-            alias="champion"
+            name=settings.registered_model_name,
+            alias=settings.model_alias,
         ).version
     except Exception as e:
         logger.error(f"Failed to get model version: {e}")
         MODEL_VERSION = "unknown"
+
+    # Validate startup - fail fast if critical deps missing
+    try:
+        validate_startup()
+    except RuntimeError as e:
+        logger.critical(str(e))
+        raise
 
     logger.info("=" * 60)
     logger.info("API startup complete!")
@@ -143,6 +172,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next: Callable) -> Response:
+    """Log request details and latency for observability."""
+    start_time = time.time()
+
+    response = await call_next(request)
+
+    duration = time.time() - start_time
+    logger.info(
+        f"{request.method} {request.url.path} "
+        f"status={response.status_code} duration={duration:.3f}s"
+    )
+
+    return response
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -234,18 +279,36 @@ async def predict(request: StockRequest) -> PredictionResponse:
     try:
         logger.info("Retrieving features from Feast online store...")
         entity_rows = [{"symbol": request.symbol}]
-        
+
         features_df = FEAST_STORE.get_online_features(
             entity_rows=entity_rows,
-            features=FEAST_STORE.get_feature_service(FEAST_SERVICE_NAME)
+            features=FEAST_STORE.get_feature_service(settings.feast_service_name),
         ).to_df()
     except Exception as e:
         logger.error(f"Failed to retrieve features: {e}")
-        raise HTTPException(status_code=500, detail=f"Feature retrieval failed: {str(e)}")
-    
+        raise HTTPException(
+            status_code=500, detail=f"Feature retrieval failed: {str(e)}"
+        )
+
+    # Validate features were returned
+    # Drop symbol, check if remaining features are all NaN
+
+    # feature_cols steps
+    # Step 1: isna Boolean mask (True = NaN, False = value exists)
+    # Step 2: all Check if ALL rows in each column are NaN → Series[bool]
+    # Step 3: all Check if ALL columns are all-NaN → single bool
+
+    feature_cols = features_df.drop(columns=["symbol"], errors="ignore")
+    if features_df.empty or feature_cols.isna().all().all():
+        logger.error(f"No features found for symbol: {request.symbol}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No features available for symbol '{request.symbol}'. "
+            "Symbol may not exist or features not materialized.",
+        )
+
     # Cast integer columns (SQLite returns int64, model expects int32)
-    int_columns = ["day_of_month", "day_of_week", "month"]
-    for col in int_columns:
+    for col in settings.int_columns:
         if col in features_df.columns:
             features_df[col] = features_df[col].astype("int32")
 
