@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Stock Prediction API...")
     logger.info("=" * 60)
 
-    # Task 1: Set MLflow tracking URI
+    # Set MLflow tracking URI
     try:
         logger.info("Connecting to MLflow...")
         tracking_uri = f"file://{MLRUNS_PATH}"
@@ -92,27 +92,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to connect to MLflow: {e}")
 
-    # Task 2: Load pyfunc model from Model Registry
-    # Resource: check local.yaml for registered_model_name
-    # Resource: check train.py for alias used during registration
+    # Load pyfunc model from Model Registry
     try:
         logger.info("Loading model from Model Registry...")
-        # YOUR CODE HERE - construct model_uri and load
         model_uri = f"models:/{REGISTERED_MODEL_NAME}@champion"
         MODEL = mlflow.pyfunc.load_model(model_uri=model_uri)
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
 
-    # Task 3: Load Feast FeatureStore
+    # Load Feast FeatureStore
     try:
         logger.info(f"Loading Feast store from {FEAST_REPO_PATH}...")
-        # YOUR CODE HERE
         FEAST_STORE = FeatureStore(str(FEAST_REPO_PATH))
     except Exception as e:
         logger.error(f"Failed to load Feast store: {e}")
 
-    # Task 4: Set MODEL_VERSION from loaded model metadata
-    # YOUR CODE HERE
+    # Set MODEL_VERSION from loaded model metadata
     try:
         MODEL_VERSION = client.get_model_version_by_alias(
             name=REGISTERED_MODEL_NAME, 
@@ -227,7 +222,7 @@ async def predict(request: StockRequest) -> PredictionResponse:
     """
     logger.info(f"Received prediction request: {request.symbol} on {request.date}")
 
-    # Task 6.1: Check dependencies
+    # Check dependencies
     checker = check_dependencies(MODEL, FEAST_STORE)
     if not checker["all_loaded"]:
         raise HTTPException(
@@ -235,7 +230,7 @@ async def predict(request: StockRequest) -> PredictionResponse:
             detail=f"Missing dependencies: {', '.join(checker['missing_dependencies'])}",
         )
 
-    # Task 6.2: Retrieve features from Feast online store
+    # Retrieve features from Feast online store
     try:
         logger.info("Retrieving features from Feast online store...")
         entity_rows = [{"symbol": request.symbol}]
@@ -248,16 +243,15 @@ async def predict(request: StockRequest) -> PredictionResponse:
         logger.error(f"Failed to retrieve features: {e}")
         raise HTTPException(status_code=500, detail=f"Feature retrieval failed: {str(e)}")
     
-    # Task 6.3: Cast integer columns (SQLite returns int64, model expects int32)
+    # Cast integer columns (SQLite returns int64, model expects int32)
     int_columns = ["day_of_month", "day_of_week", "month"]
     for col in int_columns:
         if col in features_df.columns:
             features_df[col] = features_df[col].astype("int32")
 
-    # Task 6.4: Make prediction using pyfunc model
+    # Make prediction using pyfunc model
     try:
         logger.info("Making prediction...")
-        # YOUR CODE HERE - pyfunc returns a DataFrame
         model_prediction_df = MODEL.predict(features_df)
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
@@ -274,8 +268,7 @@ async def predict(request: StockRequest) -> PredictionResponse:
 
     logger.info(f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})")
 
-    # Task 6.5: Parse pyfunc output and return response
-    # YOUR CODE HERE
+    # Parse pyfunc output and return response
     return PredictionResponse(
         symbol=request.symbol,
         date=request.date,
