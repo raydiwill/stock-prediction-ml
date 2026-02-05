@@ -1,6 +1,6 @@
 """Pydantic schemas for Stock Prediction API request/response models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator
@@ -18,7 +18,7 @@ class StockRequest(BaseModel):
         allowed_symbol = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA"]
         if sent_symbol.upper() not in allowed_symbol:
             raise ValueError(
-                f"Stock must be one of: {", ".join(sorted(allowed_symbol))}"
+                f"Stock must be one of: {', '.join(sorted(allowed_symbol))}"
             )
         else:
             return sent_symbol.upper()
@@ -46,7 +46,7 @@ class PredictionResponse(BaseModel):
     )
     probability: float = Field(..., ge=0.0, le=1.0, description="Model confidence")
     predicted_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="UTC timestamp when prediction was made",
     )
     model_version: str = Field(..., example="1")
