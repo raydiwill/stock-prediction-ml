@@ -1,3 +1,36 @@
+"""Stock Prediction Model Training Pipeline.
+
+This module provides an end-to-end ML training pipeline for predicting
+next-day stock price direction (up/down) using CatBoost classifier.
+
+Pipeline Steps:
+    1. Load training data from Feast offline store
+    2. Temporal train/val/test split (no data leakage)
+    3. Fit OneHotEncoder on training data only
+    4. Train CatBoost with early stopping
+    5. Evaluate on validation and test sets
+    6. Log metrics, artifacts, and model to MLflow
+    7. Register model and assign alias based on performance
+
+Key Components:
+    - StockPredictionModel: MLflow pyfunc wrapper bundling model + encoder
+    - promote_model_with_alias: Automated model promotion based on thresholds
+    - save_model_artifacts_locally: Prepare artifacts for pyfunc logging
+
+Usage:
+    CLI:
+        $ python -m stock_prediction_ml.model.train --config configs/training/local.yaml
+
+    Python:
+        >>> from stock_prediction_ml.model.train import main
+        >>> main("configs/training/local.yaml")
+
+Example Output:
+    - MLflow experiment with logged metrics, params, and artifacts
+    - Registered model with "champion" or "challenger" alias
+    - Diagnostic plots (feature importance, confusion matrix, ROC curve)
+"""
+
 import argparse
 import json
 import logging
@@ -32,17 +65,49 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class StockPredictionModel(mlflow.pyfunc.PythonModel):
+    """MLflow PyFunc wrapper that bundles model, encoder, and feature config.
+
+    This class creates a self-contained model artifact for deployment.
+    It handles symbol encoding internally, so callers only need to provide
+    raw features + symbol column.
+
+    Attributes:
+        model (CatBoostClassifier): Trained classification model.
+        encoder (OneHotEncoder): Fitted encoder for symbol column.
+        selected_features (list[str]): Feature names used during training.
+
+    Artifact Structure (saved by save_model_artifacts_locally):
+        - model_path: catboost_model.cbm (CatBoost native format)
+        - encoder_path: ohe.pkl (OneHotEncoder via joblib)
+        - feature_path: selected_features.json (feature names)
+
+    Example:
+        Loading and using the model:
+            >>> model = mlflow.pyfunc.load_model("models:/stock_prediction_classifier@champion")
+            >>> input_df = pd.DataFrame({"symbol": ["AAPL"], "return": [0.01], ...})
+            >>> predictions = model.predict(input_df)
+            >>> predictions["prediction_class"].iloc[0]  # 0 or 1
     """
-    Custom MLflow PyFunc wrapper that bundles model + encoder + feature config.
 
-    This class is used by mlflow.pyfunc.log_model() to create a self-contained
-    model artifact that includes all dependencies needed for inference.
+    def load_context(self, context) -> None:
+        """Load model artifacts when the pyfunc model is loaded.
 
-    The load_context() method is called when loading the model and receives
-    the artifacts dict that was passed to log_model().
-    """
+        Called automatically by MLflow when loading the model via
+        mlflow.pyfunc.load_model(). Reads artifacts from the paths
+        specified during log_model().
 
-    def load_context(self, context):
+        Args:
+            context: MLflow context object containing:
+                - artifacts (dict): Mapping of artifact keys to local file paths
+                    - "model_path": Path to catboost_model.cbm
+                    - "encoder_path": Path to ohe.pkl
+                    - "feature_path": Path to selected_features.json
+
+        Sets:
+            self.model: Loaded CatBoostClassifier
+            self.encoder: Loaded OneHotEncoder
+            self.selected_features: List of feature names
+        """
         import json
 
         import joblib
@@ -59,6 +124,36 @@ class StockPredictionModel(mlflow.pyfunc.PythonModel):
         logger.info("Loaded artifact for prediction!")
 
     def predict(self, context, model_input: pd.DataFrame) -> pd.DataFrame:
+        """Generate predictions for input data.
+
+        Handles symbol encoding internally using the bundled encoder,
+        so input only needs raw features + symbol column.
+
+        Args:
+            context: MLflow context (unused but required by pyfunc interface).
+            model_input: DataFrame containing:
+                - "symbol" column (str): Stock ticker for encoding
+                - Feature columns matching self.selected_features
+
+        Returns:
+            pd.DataFrame with columns:
+                - prediction_class: Binary prediction (0=DOWN, 1=UP)
+                - prediction_proba_up: Probability of UP class
+                - prediction_proba_down: Probability of DOWN class
+
+        Raises:
+            ValueError: If "symbol" column is missing from input.
+
+        Example:
+            >>> input_df = pd.DataFrame({
+            ...     "symbol": ["AAPL"],
+            ...     "return": [0.01],
+            ...     "volume": [1000000],
+            ...     # ... other features
+            ... })
+            >>> result = model.predict(input_df)
+            >>> result["prediction_class"].iloc[0]  # 0 or 1
+        """
         # Validate input has required column
         if "symbol" not in model_input.columns:
             raise ValueError("Input DataFrame must contain 'symbol' column")
@@ -85,22 +180,63 @@ class StockPredictionModel(mlflow.pyfunc.PythonModel):
         )
 
 
-def log_section(title: str):
-    """Log a formatted section header for better readability."""
+def log_section(title: str) -> None:
+    """Log a formatted section header for pipeline readability.
+
+    Creates a visual separator in logs to distinguish major pipeline steps.
+
+    Args:
+        title: Section title to display (will be uppercased).
+
+    Example:
+        >>> log_section("Training model")
+        # Logs:
+        # ================================================================================
+        #   TRAINING MODEL
+        # ================================================================================
+    """
     logger.info("=" * 80)
     logger.info(f"  {title.upper()}")
     logger.info("=" * 80)
 
 
-def log_dict(title: str, data: dict, indent: int = 2):
-    """Log a dictionary with nice formatting."""
+def log_dict(title: str, data: dict, indent: int = 2) -> None:
+    """Log a dictionary with formatted key-value pairs.
+
+    Args:
+        title: Header text for the dictionary output.
+        data: Dictionary to log.
+        indent: Number of spaces for value indentation (default: 2).
+
+    Example:
+        >>> log_dict("Model params", {"depth": 6, "iterations": 500})
+        # Logs:
+        # Model params:
+        #   depth: 6
+        #   iterations: 500
+    """
     logger.info(f"{title}:")
     for key, value in data.items():
         logger.info(f"  {key}: {value}")
 
 
-def log_dataframe_info(df_name: str, df):
-    """Log DataFrame shape, columns, and date range."""
+def log_dataframe_info(df_name: str, df: pd.DataFrame) -> None:
+    """Log DataFrame summary information.
+
+    Displays shape, first 5 column names, and date range if applicable.
+
+    Args:
+        df_name: Descriptive name for the DataFrame.
+        df: DataFrame to summarize.
+
+    Example:
+        >>> log_dataframe_info("Training data", train_df)
+        # Logs:
+        # Training data:
+        #   Shape: 1500 rows × 25 columns
+        #   Columns: ['symbol', 'date', 'open', 'high', 'low']...
+        #   Date range: 2020-01-01 to 2025-12-31
+    """
     logger.info(f"{df_name}:")
     logger.info(f"  Shape: {df.shape[0]} rows × {df.shape[1]} columns")
     logger.info(f"  Columns: {list(df.columns)[:5]}...")  # Show first 5 columns
@@ -537,12 +673,22 @@ def plot_roc_curve(y_true, y_proba, save_path=None):
 
 
 def clean_up_resources() -> None:
-    """Clean up temporary resources after logging to MLflow.
+    """Clean up temporary resources after MLflow logging.
 
-    Removes:
-    - tmp/ directory (bundled model artifacts)
-    - docs/images/*.png (diagnostic plots)
-    - catboost_info/ (CatBoost training logs)
+    Removes temporary files and directories created during training:
+        - tmp/: Bundled model artifacts (catboost_model.cbm, ohe.pkl, etc.)
+        - docs/images/*.png: Diagnostic plots (feature importance, ROC, etc.)
+        - catboost_info/: CatBoost internal training logs
+
+    Called at the end of main() to keep the workspace clean.
+    Logs warnings but does not raise exceptions if cleanup fails.
+
+    Example:
+        >>> clean_up_resources()
+        # Logs:
+        # Cleaned up temporary artifacts in /path/to/tmp
+        # Cleaned up temporary images in /path/to/docs/images
+        # Cleaned up CatBoost folder!
     """
     # 1. Delete tmp/ directory with bundled artifacts
     tmp_dir = PROJECT_ROOT / "tmp"
