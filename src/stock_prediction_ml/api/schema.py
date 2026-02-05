@@ -1,4 +1,6 @@
-from datetime import datetime
+"""Pydantic schemas for Stock Prediction API request/response models."""
+
+from datetime import datetime, timezone
 
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator
@@ -44,7 +46,7 @@ class PredictionResponse(BaseModel):
     )
     probability: float = Field(..., ge=0.0, le=1.0, description="Model confidence")
     predicted_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="UTC timestamp when prediction was made",
     )
     model_version: str = Field(..., example="1")

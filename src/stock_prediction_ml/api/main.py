@@ -1,6 +1,31 @@
+"""Stock Prediction API.
+
+This module provides a FastAPI-based REST API for predicting next-day
+stock price direction (up/down) using a trained CatBoost model.
+
+Architecture:
+    - Model: Loaded from MLflow Model Registry (pyfunc wrapper)
+    - Features: Retrieved from Feast online store (SQLite backend)
+    - Predictions: Binary classification (0=DOWN, 1=UP) with probabilities
+
+Endpoints:
+    GET /health: Check API and dependency status
+    POST /predict: Get stock movement prediction for a symbol
+
+Example:
+    Start the API:
+        $ uvicorn src.stock_prediction_ml.api.main:app --reload
+
+    Make a prediction:
+        $ curl -X POST http://localhost:8000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"symbol": "AAPL", "date": "2026-02-04"}'
+"""
+
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncGenerator
 
 import mlflow
 from mlflow.tracking import MlflowClient
@@ -34,9 +59,25 @@ MODEL_VERSION = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Load pyfunc model from Model Registry and Feast store on startup.
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage API startup and shutdown lifecycle.
+
+    Initializes all dependencies on startup:
+        1. MLflow tracking connection
+        2. Champion model from Model Registry
+        3. Feast online feature store
+        4. Model version metadata
+
+    On shutdown, logs a clean exit message.
+
+    Args:
+        app: FastAPI application instance.
+
+    Yields:
+        None: Control returns to FastAPI to handle requests.
+
+    Raises:
+        Logs errors but does not raise - allows partial startup for debugging.
     """
     global MODEL, FEAST_STORE, MODEL_VERSION
 
@@ -111,13 +152,25 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
-async def health_check():
+@app.get("/health", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
+    """Check API health and dependency status.
+
+    Verifies that all required dependencies are loaded and operational:
+        - ML model (from MLflow Model Registry)
+        - Feast online feature store
+
+    Returns:
+        HealthResponse: Status object containing:
+            - status: "healthy" if all deps loaded, else "unhealthy"
+            - model_loaded: Boolean indicating model availability
+            - feast_online_store: Boolean indicating Feast availability
+            - model_version: Current champion model version
+
+    Example:
+        GET /health
+        Response: {"status": "healthy", "model_loaded": true, ...}
     """
-    Health check endpoint to verify all dependencies are loaded.
-    """
-    # Task 5: Update check_dependencies call (fewer deps now)
-    # YOUR CODE HERE
     checker = check_dependencies(MODEL, FEAST_STORE)
 
     if checker["all_loaded"]:
@@ -138,10 +191,41 @@ async def health_check():
     )
 
 
-@app.post("/predict")
-async def predict(request: StockRequest):
-    """
-    Predict next-day stock price direction.
+@app.post("/predict", response_model=PredictionResponse)
+async def predict(request: StockRequest) -> PredictionResponse:
+    """Predict next-day stock price movement direction.
+
+    Uses the latest features from Feast online store and the champion
+    model from MLflow to predict whether the stock will go UP or DOWN.
+
+    Note:
+        The `date` parameter is for logging/reference only. Predictions
+        always use the latest available features from the online store.
+
+    Args:
+        request: StockRequest containing:
+            - symbol: Stock ticker (e.g., "AAPL", "MSFT")
+            - date: Reference date (YYYY-MM-DD format)
+
+    Returns:
+        PredictionResponse containing:
+            - symbol: Requested stock ticker
+            - date: Reference date from request
+            - prediction: Binary class (0=DOWN, 1=UP)
+            - prediction_label: Human-readable label ("UP" or "DOWN")
+            - probability: Model confidence for predicted class
+            - predicted_at: UTC timestamp of prediction
+            - model_version: Version of model used
+
+    Raises:
+        HTTPException 503: If model or Feast store not loaded
+        HTTPException 500: If feature retrieval or prediction fails
+        HTTPException 422: If request validation fails (invalid symbol/date)
+
+    Example:
+        POST /predict
+        Body: {"symbol": "AAPL", "date": "2026-02-04"}
+        Response: {"prediction": 1, "prediction_label": "UP", ...}
     """
     logger.info(f"Received prediction request: {request.symbol} on {request.date}")
 
