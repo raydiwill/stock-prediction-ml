@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     model_name: str = "catboost_model"
     default_experiment_name: str = "stock_prediction_experiment"
 
+    # Model Registry settings
+    registered_model_name: str = "stock_prediction_classifier"
+    model_alias: str = "champion"
+
+    # Feast settings
+    feast_service_name: str = "stock_prediction_service"
+
+    # Feature casting (SQLite returns int64, model expects int32)
+    int_columns: list[str] = ["day_of_month", "day_of_week", "month"]
+
+    # Supported stock symbols
+    valid_symbols: list[str] = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA"]
+
     cors_origins: str = "*"
 
     @property
