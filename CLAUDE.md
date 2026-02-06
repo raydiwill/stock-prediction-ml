@@ -98,7 +98,7 @@ notebooks/         # Jupyter exploration (01-06)
 
 ## Workflow Preference
 
-1. **Skeleton first**: Provide structure with hints, let me implement
+1. **Skeleton first**: Provide structure with hints, no obvious hints just ideas, let me implement
 2. **Debug together**: Help fix issues when I run into errors
 3. **Then refactor**: Improve to production standards after it works
 4. **Explain why**: Always explain the reasoning behind suggestions
