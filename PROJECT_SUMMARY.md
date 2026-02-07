@@ -16,7 +16,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, request logging middleware
 - ❌ **Orchestration**: Airflow DAGs not implemented
 - ❌ **Monitoring**: Grafana/Prometheus stack not implemented
-- ❌ **UI**: Streamlit demo not implemented
+- 🔄 **UI**: Streamlit dashboard in progress (3-page app: Predictions, Historical Data, About Model)
 
 ## Primary stack
 **Core**: Python 3.13, pandas, numpy, scikit-learn, CatBoost, XGBoost, LightGBM, RandomForest
@@ -30,7 +30,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 **Planned**: Docker, Airflow, Grafana, Streamlit
 
 ## Current status
-### ✅ Completed (95%)
+### ✅ Completed (95%) + UI In Progress
 1. **Data ingestion** ([`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py))
    - Fetch EOD data from MarketStack API with pagination
    - Save to parquet format in `data/raw/`
@@ -170,11 +170,40 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - All hardcoded constants migrated to `settings` object
    - Schema definitions ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py))
 
-### ❌ Not Started (5%)
+### 🔄 In Progress: Streamlit UI
+**Goal:** Recruiter-ready dashboard for stock prediction demos
+
+**File Structure:**
+```
+src/stock_prediction_ml/streamlit_app/
+├── app.py                    # Entry point
+├── pages/
+│   ├── 1_Predictions.py      # Symbol selector, date picker, predict button, result
+│   ├── 2_Historical_Data.py  # Candlestick charts with volume
+│   └── 3_About_Model.py      # Model metrics, feature importance, tech stack
+├── components/
+│   ├── api_client.py         # HTTP wrapper for FastAPI calls (predict, health_check)
+│   └── charts.py             # Plotly chart builders (candlestick, confidence gauge)
+└── utils/
+    └── data_loader.py        # Parquet readers for historical data
+```
+
+**Implementation Phases:**
+1. **MVP** - Add dependencies → api_client → app.py → 1_Predictions.py
+2. **Visual Polish** - data_loader → charts.py → 2_Historical_Data.py → confidence gauge
+3. **Model Showcase** - 3_About_Model.py with MLflow artifacts
+4. **Production Prep** - Error handling, theme config, Streamlit Cloud deployment
+
+**Dependencies to add:** `streamlit>=1.28.0`, `plotly>=5.18.0`
+
+**Run commands:**
+- API: `uvicorn src.stock_prediction_ml.api.main:app --reload`
+- UI: `streamlit run src/stock_prediction_ml/streamlit_app/app.py`
+
+### ❌ Not Started
 1. **Orchestration**: Airflow DAGs for automated pipeline execution
 2. **Monitoring**: Grafana dashboards for drift detection and performance tracking
 3. **Deployment**: Docker containerization, model serving infrastructure
-4. **UI**: Streamlit dashboard for visualization and inference
 
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
@@ -192,7 +221,8 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py): Training + Model Registry with pyfunc bundling
 - [`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py): Database ingestion with deduplication
 - [`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/): Feature store infrastructure (Feast SDK)
-- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): FastAPI application (in progress)
+- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): FastAPI application with MLflow + Feast integration
+- [`src/stock_prediction_ml/streamlit_app/`](src/stock_prediction_ml/streamlit_app/): Streamlit UI (in progress)
 
 ### Configuration
 - [`configs/training/local.yaml`](configs/training/local.yaml): Training configuration (paths, hyperparameters, Feast service, MLflow settings)
