@@ -24,7 +24,9 @@
 | Feature Store (Feast) | ✅ Complete |
 | Model Training + Registry | ✅ Complete |
 | REST API | ✅ Complete |
-| API Tests | 🚧 In Progress |
+| Airflow | 🚧 In Progress |
+| Grafana | ⏳ Planned |
+| UI | ⏳ Planned |
 | Docker/Orchestration | ⏳ Planned |
 
 ---
