@@ -42,4 +42,11 @@ jobs:
       - name: Run tests
         env:
           MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
-        run: uv run pytest
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "Running full test suite (including slow tests)"
+            uv run pytest -v
+          else
+            echo "Running fast tests only (skipping slow tests)"
+            uv run pytest -v -m "not slow"
+          fi
