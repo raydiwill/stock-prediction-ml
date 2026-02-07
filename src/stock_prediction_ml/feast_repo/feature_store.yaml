@@ -1,0 +1,15 @@
+project: stock_prediction_ml
+provider: local
+
+registry:
+  type: sql
+  path: ../../../data/feast/registry.db
+
+offline_store:
+  type: file
+
+online_store:
+  type: sqlite
+  path: ../../../data/feast/online_store.db
+
+entity_key_serialization_version: 3
