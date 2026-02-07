@@ -32,10 +32,14 @@ feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
 
 ## Current Focus
 
-**Next Task**: Write API tests in `tests/test_api.py`
-- Mock MLflow and Feast dependencies
-- Test health check and predict endpoints
-- See "API Testing Guide" section in PROJECT_SUMMARY.md
+**Next Tasks**:
+- **Orchestration**: Airflow DAGs for automated pipeline execution
+
+## Future implementation
+
+- **Monitoring**: Grafana/Prometheus for drift detection
+- **Deployment**: Docker containerization
+- **UI**: Streamlit dashboard for predictions
 
 ## Code Style
 
@@ -111,5 +115,5 @@ notebooks/         # Jupyter exploration (01-06)
 | API implementation | [src/stock_prediction_ml/api/main.py](src/stock_prediction_ml/api/main.py) |
 | Model training | [src/stock_prediction_ml/model/train.py](src/stock_prediction_ml/model/train.py) |
 | Settings | [src/stock_prediction_ml/config/settings.py](src/stock_prediction_ml/config/settings.py) |
-| Test patterns | [tests/test_train.py](tests/test_train.py) |
+| Test patterns | [tests/test_train.py](tests/test_train.py), [tests/test_api.py](tests/test_api.py) |
 | Training config | [configs/training/local.yaml](configs/training/local.yaml) |

@@ -11,7 +11,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **Model training**: CatBoost classifier with time-series split, one-hot encoding, early stopping
 - ✅ **Experiment tracking**: MLflow integration for metrics, artifacts, and model versioning
 - ✅ **Model Registry**: MLflow pyfunc wrapper bundling model + encoder + features with alias-based promotion
-- ✅ **Testing suite**: Pytest with synthetic fixtures for CI/CD (13+ test modules)
+- ✅ **Testing suite**: Pytest with synthetic fixtures for CI/CD (14+ test modules including API tests)
 - ✅ **Feature store**: Feast feature definitions, materialization pipeline, online store (SQLite) with 203+ feature records
 - ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, request logging middleware
 - ❌ **Orchestration**: Airflow DAGs not implemented
@@ -30,7 +30,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 **Planned**: Docker, Airflow, Grafana, Streamlit
 
 ## Current status
-### ✅ Completed (92%)
+### ✅ Completed (95%)
 1. **Data ingestion** ([`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py))
    - Fetch EOD data from MarketStack API with pagination
    - Save to parquet format in `data/raw/`
@@ -121,6 +121,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Database ingestion ([`test_ingest.py`](tests/test_ingest.py))
      - Training pipeline ([`test_train.py`](tests/test_train.py)) - 26 tests including Feast data loading
      - Feast feature store ([`test_feast.py`](tests/test_feast.py)) - Entity/view schemas, materialization, retrieval
+     - REST API endpoints ([`test_api.py`](tests/test_api.py)) - 8 tests with mocked MLflow/Feast dependencies
 
 9. **Feature Store** ([`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/))
    - **Infrastructure**:
@@ -168,17 +169,6 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Centralized settings for model name, alias, Feast service, int columns
      - All hardcoded constants migrated to `settings` object
    - Schema definitions ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py))
-
-### 🚧 In Progress (3%)
-1. **API Testing** ([`tests/test_api.py`](tests/test_api.py) - to be created)
-   - **Scope**: Unit tests for FastAPI endpoints with mocked dependencies
-   - **Next steps**:
-     - Mock MLflow model loading in lifespan
-     - Mock Feast FeatureStore and `get_online_features()` responses
-     - Test health check with various dependency states (all loaded, partial failures)
-     - Test predict endpoint (valid requests, missing features, model failures)
-     - Test error handling (503, 500, 422 status codes)
-     - Test startup validation (fail-fast behavior)
 
 ### ❌ Not Started (5%)
 1. **Orchestration**: Airflow DAGs for automated pipeline execution
@@ -293,6 +283,16 @@ Feature vector (34 features after encoding `symbol`):
 - `test_get_historical_features_performs_point_in_time_join`: Historical features with point-in-time correctness
 - `test_get_online_features_using_feature_service`: Feature service-based retrieval
 
+✅ **REST API**:
+- `test_health_returns_healthy_when_all_dependencies_loaded`: Health check with all deps
+- `test_health_returns_unhealthy_when_model_missing`: Health check with missing model
+- `test_predict_success_returns_prediction`: Valid prediction request
+- `test_predict_missing_features_returns_404`: Missing Feast features
+- `test_predict_model_failure_returns_500`: Model prediction error handling
+- `test_predict_dependencies_missing_returns_503`: Service unavailable when deps missing
+- `test_invalid_symbol_returns_422`: Request validation for invalid symbols
+- `test_weekend_date_returns_422`: Request validation for weekend dates
+
 ## Notes / decisions
 ### Architecture
 - **Temporal splits over random splits**: Date quantiles (90/5/5) prevent leakage in time-series data
@@ -338,91 +338,6 @@ Feature vector (34 features after encoding `symbol`):
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
 - **Containerization**: Docker Compose for local dev and production deployment
-
----
-
-## API Testing Guide (Next Task)
-
-### Overview
-Write comprehensive unit tests for the FastAPI application with **mocked external dependencies** (no real MLflow/Feast required).
-
-### Testing Strategy
-**Mock external dependencies:**
-- MLflow model loading → Use `pytest-mock` or `unittest.mock.patch`
-- Feast FeatureStore → Mock `get_online_features()` return values
-- Hermetic tests: No real model/Feast store required (CI-friendly)
-
-**Test structure:**
-```
-tests/test_api.py
-├── Fixtures: mock_model, mock_feast_store, test_client (FastAPI TestClient)
-├── Lifespan tests: Startup success, partial failures, validation
-├── Health check tests: All deps loaded, missing MODEL, missing FEAST_STORE
-├── Predict tests: Valid request, missing features, invalid symbol, model error
-└── Edge cases: Empty features, null features, type casting
-```
-
-### Key Test Cases
-
-#### 1. Startup Validation (`test_lifespan_*`)
-- ✅ All dependencies load successfully → API starts
-- ❌ Model fails to load → RuntimeError raised
-- ❌ Feast fails to load → RuntimeError raised
-
-#### 2. Health Check Endpoint (`test_health_*`)
-- ✅ All dependencies loaded → `{"status": "healthy", "model_loaded": true, "feast_online_store": true}`
-- ❌ Model missing → `{"status": "unhealthy", "model_loaded": false}`
-- ❌ Feast missing → `{"status": "unhealthy", "feast_online_store": false}`
-
-#### 3. Predict Endpoint (`test_predict_*`)
-- ✅ Valid request → Returns `{"prediction": 1, "prediction_label": "UP", "probability": 0.65}`
-- ❌ Feast returns empty DataFrame → HTTP 404 with helpful error message
-- ❌ Feast returns all-NaN features → HTTP 404
-- ❌ Model prediction fails → HTTP 500
-- ❌ Dependencies not loaded → HTTP 503
-
-#### 4. Request Logging Middleware (`test_middleware_*`)
-- ✅ Logs include method, path, status code, duration
-
-### Mocking Examples
-
-**Mock model loading:**
-```python
-@pytest.fixture
-def mock_mlflow_load(mocker):
-    mock_model = mocker.MagicMock()
-    mock_model.predict.return_value = pd.DataFrame({
-        "prediction_class": [1],
-        "prediction_proba_up": [0.65],
-        "prediction_proba_down": [0.35]
-    })
-    mocker.patch("mlflow.pyfunc.load_model", return_value=mock_model)
-    return mock_model
-```
-
-**Mock Feast FeatureStore:**
-```python
-@pytest.fixture
-def mock_feast_store(mocker):
-    mock_store = mocker.MagicMock()
-    mock_features = pd.DataFrame({
-        "symbol": ["AAPL"],
-        "close": [150.0],
-        "volume": [1000000],
-        # ... other features
-    })
-    mock_store.get_online_features.return_value.to_df.return_value = mock_features
-    mocker.patch("feast.FeatureStore", return_value=mock_store)
-    return mock_store
-```
-
-### Files to Create
-- [`tests/test_api.py`](tests/test_api.py): Main test module for API endpoints
-
-### Resources
-- FastAPI Testing: https://fastapi.tiangolo.com/tutorial/testing/
-- Pytest-mock: https://pytest-mock.readthedocs.io/
-- Your existing patterns: [`tests/test_train.py`](tests/test_train.py) for mocking examples
 
 ---
 
