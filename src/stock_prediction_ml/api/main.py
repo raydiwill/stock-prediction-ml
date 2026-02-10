@@ -22,6 +22,7 @@ Example:
             -d '{"symbol": "AAPL", "date": "2026-02-04"}'
 """
 
+import base64
 import logging
 import time
 from collections.abc import AsyncGenerator, Callable
@@ -34,7 +35,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from feast import FeatureStore
 from mlflow.tracking import MlflowClient
 
-from stock_prediction_ml.api.schema import HealthResponse, PredictionResponse, StockRequest
+from stock_prediction_ml.api.schema import (
+    HealthResponse,
+    ModelInfoResponse,
+    PredictionResponse,
+    StockRequest,
+)
 from stock_prediction_ml.api.utils import check_dependencies
 from stock_prediction_ml.config.settings import settings
 
@@ -54,6 +60,7 @@ MLRUNS_PATH = PROJECT_ROOT / "mlruns"
 MODEL = None  # pyfunc model (bundles encoder + features internally)
 FEAST_STORE = None
 MODEL_VERSION = None
+MLFLOW_CLIENT = None  # MlflowClient instance for registry queries
 
 
 def validate_startup() -> None:
@@ -96,7 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Raises:
         Logs errors but does not raise - allows partial startup for debugging.
     """
-    global MODEL, FEAST_STORE, MODEL_VERSION
+    global MODEL, FEAST_STORE, MODEL_VERSION, MLFLOW_CLIENT
 
     logger.info("=" * 60)
     logger.info("Starting Stock Prediction API...")
@@ -108,6 +115,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         tracking_uri = f"file://{MLRUNS_PATH}"
         mlflow.set_tracking_uri(tracking_uri)
         client = MlflowClient(tracking_uri=tracking_uri)
+        MLFLOW_CLIENT = client
     except Exception as e:
         logger.error(f"Failed to connect to MLflow: {e}")
 
@@ -340,3 +348,62 @@ async def predict(request: StockRequest) -> PredictionResponse:
         probability=confidence,
         model_version=str(MODEL_VERSION),
     )
+
+
+def _get_champion_run_data() -> dict:
+    """Query MLflow for champion model's run metrics and diagnostic artifacts.
+
+    Returns:
+        dict with keys: model_version, model_alias, run_id, metrics, diagnostics
+
+    Raises:
+        RuntimeError: If MLflow client is unavailable or query fails.
+    """
+    if MLFLOW_CLIENT is None:
+        raise RuntimeError("MLflow client not initialized")
+
+    # 1. Get champion model version object → extract run_id
+    # Hint: same pattern as lifespan lines 134-138
+    # version_info = MLFLOW_CLIENT.get_model_version_by_alias(...)
+    # run_id = version_info.run_id
+
+    # 2. Fetch the run → extract metrics
+    # Hint: run = MLFLOW_CLIENT.get_run(run_id)
+    #       all_metrics = run.data.metrics
+    #       Filter to keys starting with "test_" or "val_"
+
+    # 3. Download diagnostic artifacts → base64 encode each PNG
+    # Hint: local_dir = MLFLOW_CLIENT.download_artifacts(run_id, "diagnostics")
+    #       This downloads to a temp dir and returns the local path
+    #       Loop over expected filenames: feature_importance.png, confusion_matrix.png, roc_curve.png
+    #       Read bytes → base64.b64encode(bytes).decode("utf-8")
+    #       Skip missing files gracefully (older runs may lack some plots)
+
+    # 4. Return assembled dict matching ModelInfoResponse fields
+    pass
+
+
+@app.get("/model/info", response_model=ModelInfoResponse)
+async def get_model_info() -> ModelInfoResponse:
+    """Get champion model metadata, metrics, and diagnostic plots.
+
+    Queries MLflow Model Registry for the current champion model's
+    run metrics and downloads diagnostic plot artifacts.
+
+    Returns:
+        ModelInfoResponse: Model version, performance metrics, and
+            base64-encoded diagnostic plots.
+
+    Raises:
+        HTTPException 503: If MLflow client not initialized.
+        HTTPException 500: If model info retrieval fails.
+    """
+    try:
+        data = _get_champion_run_data()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to retrieve model info: {e}")
+        raise HTTPException(status_code=500, detail=f"Model info retrieval failed: {e}")
+
+    return ModelInfoResponse(**data)
