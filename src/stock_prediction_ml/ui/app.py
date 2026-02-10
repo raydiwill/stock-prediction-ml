@@ -2,7 +2,10 @@
 
 import streamlit as st
 
-from stock_prediction_ml.ui.pages import prediction, historical, about_model
+from stock_prediction_ml.ui.pages.prediction import main as prediction_page
+
+# from stock_prediction_ml.ui.pages.historical import main as historical_page
+# from stock_prediction_ml.ui.pages.about_model import main as about_model_page
 
 
 # =============================================================================
@@ -10,33 +13,13 @@ from stock_prediction_ml.ui.pages import prediction, historical, about_model
 # =============================================================================
 
 def inject_custom_css():
-    """Inject custom CSS for tool buttons with hover effects.
+    """Inject custom CSS for sidebar navigation and tool button styling.
 
-    TODO: Define CSS for:
-        1. `.tool-button` - Base style for each tool (padding, cursor, border-radius)
-        2. `.tool-button:hover` - Hover effect (border glow, background change, scale)
-        3. `.category-box` - Container for grouped tools (border, padding, margin)
-
-    Hints:
-        - Use `transition` for smooth hover animations
-        - `box-shadow` or `border` for the "circle around" effect
-        - Consider `transform: scale(1.02)` for subtle grow on hover
-
-    Example structure:
-        st.markdown('''
-        <style>
-        .tool-button {
-            padding: ???;
-            border-radius: ???;
-            cursor: pointer;
-            transition: ???;
-        }
-        .tool-button:hover {
-            border: ???;
-            box-shadow: ???;
-        }
-        </style>
-        ''', unsafe_allow_html=True)
+    Applies styles for:
+        - Hiding default Streamlit multi-page nav
+        - Category box containers with bordered grouping
+        - Sidebar button hover effects (green glow, background tint)
+        - Left-aligned button text within sidebar
     """
     st.markdown('''
         <style>
@@ -98,35 +81,35 @@ def inject_custom_css():
 # =============================================================================
 
 def tool_button(emoji: str, label: str, key: str) -> bool:
-    """Render a clickable tool with emoji and hover effect.
+    """Render a sidebar navigation button with emoji prefix.
+
+    Uses ``st.button`` with full-width stretch. Hover styling is handled
+    by CSS injected via ``inject_custom_css()``.
 
     Args:
-        emoji: The emoji to display (e.g., "📈")
-        label: The tool name (e.g., "Live Prediction")
-        key: Unique key for the button (used for session state)
+        emoji: Icon displayed before the label (e.g., "📈").
+        label: Display text for the button (e.g., "Live Prediction").
+        key: Unique Streamlit widget key, also used as the page key
+            in session state.
 
     Returns:
-        True if clicked, False otherwise
-
-    TODO: Two approaches to try:
-
-    Approach A - Simple (st.button with CSS override):
-        clicked = st.button(f"{emoji} {label}", key=key, use_container_width=True)
-        return clicked
-
-    Approach B - Custom HTML (more control but trickier):
-        Use st.markdown with a clickable div, but note that pure HTML clicks
-        don't trigger Python. You'd need st.button hidden or use streamlit-extras.
-
-    Hint: Start with Approach A, style via CSS targeting [data-testid="stButton"]
+        True if the button was clicked this render cycle, False otherwise.
     """
-    # YOUR IMPLEMENTATION HERE
     clicked = st.button(f"{emoji} {label}", key=key, width='stretch')
     return clicked
 
 
 def category_box(title: str, tools: list[tuple[str, str, str]]):
-    """Render a category container with multiple tools inside."""
+    """Render a bordered sidebar section containing navigation buttons.
+
+    Each button click updates ``st.session_state.current_page`` to the
+    tool's page key, triggering a page switch on the next rerun.
+
+    Args:
+        title: Section heading displayed as an uppercase caption.
+        tools: List of ``(emoji, label, page_key)`` tuples defining
+            the buttons to render inside the container.
+    """
     # Use container with border (Streamlit 1.29+)
     with st.container(border=True):
         st.caption(title.upper())
@@ -141,7 +124,12 @@ def category_box(title: str, tools: list[tuple[str, str, str]]):
 # =============================================================================
 
 def welcome_page():
-    """Render the welcome/landing page content."""
+    """Render the welcome/landing page shown when no tool is selected.
+
+    Displays a hero section, an "At a Glance" metrics row (model type,
+    feature count, tracking tool), and a getting-started guide pointing
+    users to the sidebar navigation.
+    """
 
     # Hero section
     st.title("Stock Movement Predictor")
@@ -207,22 +195,20 @@ MODEL_TOOLS = [
 # Map page keys to their render functions
 PAGE_REGISTRY = {
     "home": welcome_page,
-    "prediction": prediction,
-    "historical": historical,
-    "about_model": about_model,
+    "prediction": prediction_page,
+    # "historical": historical_page,
+    # "about_model": about_model_page,
 }
 
 
 def render_sidebar():
-    """Render the sidebar with tool navigation.
+    """Render the sidebar with branding, tool categories, and footer.
 
-    TODO:
-        1. App branding (logo/title)
-        2. Optional: API health indicator
-        3. Render tool categories using category_box()
-        4. Footer with help text
-
-    Hint: Everything inside `with st.sidebar:` appears in the sidebar
+    Layout:
+        1. App title and tagline
+        2. "Analytics" category (Live Prediction, Historical Data)
+        3. "Model" category (About Model)
+        4. Footer attribution
     """
     with st.sidebar:
         # Branding
@@ -239,18 +225,21 @@ def render_sidebar():
 
 
 def render_current_page():
-    """Render the currently selected page based on session state.
+    """Route to the active page function based on session state.
 
-    TODO:
-        1. Get current page from st.session_state.current_page
-        2. Look up the render function in PAGE_REGISTRY
-        3. Call it
-
-    Hint: Use .get() with a default to handle missing keys
+    Reads ``st.session_state.current_page``, looks up the corresponding
+    render function in ``PAGE_REGISTRY``, and calls it. Falls back to
+    ``welcome_page`` if the key is missing or unregistered. Catches and
+    displays any rendering errors inline.
     """
     current = st.session_state.get("current_page", "home")
     page_func = PAGE_REGISTRY.get(current, welcome_page)
-    page_func()
+
+    try:
+        page_func()
+    except Exception as e:
+        print(f"❌ ERROR: {type(e).__name__}: {e}")
+        st.error(f"Error loading page: {e}")
 
 
 # =============================================================================
@@ -258,7 +247,12 @@ def render_current_page():
 # =============================================================================
 
 def main():
-    """Main entry point for Streamlit app."""
+    """Application entry point — configures page, injects CSS, and renders.
+
+    Must be called once per Streamlit run. ``st.set_page_config`` is
+    invoked first (Streamlit requirement), followed by session state
+    initialization, CSS injection, sidebar, and the active page.
+    """
 
     # Page config (must be first Streamlit command)
     st.set_page_config(
