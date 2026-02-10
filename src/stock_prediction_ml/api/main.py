@@ -54,7 +54,6 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FEAST_REPO_PATH = PROJECT_ROOT / "src" / "stock_prediction_ml" / "feast_repo"
-MLRUNS_PATH = PROJECT_ROOT / "mlruns"
 
 # --- Global Variables (loaded on startup) ---
 MODEL = None  # pyfunc model (bundles encoder + features internally)
@@ -112,10 +111,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Set MLflow tracking URI
     try:
         logger.info("Connecting to MLflow...")
-        tracking_uri = f"file://{MLRUNS_PATH}"
+        tracking_uri = settings.mlflow_tracking_uri
         mlflow.set_tracking_uri(tracking_uri)
-        client = MlflowClient(tracking_uri=tracking_uri)
-        MLFLOW_CLIENT = client
+        MLFLOW_CLIENT = MlflowClient(tracking_uri=tracking_uri)
     except Exception as e:
         logger.error(f"Failed to connect to MLflow: {e}")
 
@@ -139,7 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Set MODEL_VERSION from loaded model metadata
     try:
-        MODEL_VERSION = client.get_model_version_by_alias(
+        MODEL_VERSION = MLFLOW_CLIENT.get_model_version_by_alias(
             name=settings.registered_model_name,
             alias=settings.model_alias,
         ).version
@@ -366,11 +364,19 @@ def _get_champion_run_data() -> dict:
     # Hint: same pattern as lifespan lines 134-138
     # version_info = MLFLOW_CLIENT.get_model_version_by_alias(...)
     # run_id = version_info.run_id
+    version_info = MLFLOW_CLIENT.get_model_version_by_alias(
+        name=settings.registered_model_name,
+        alias=settings.model_alias,
+    )
+    run_id = version_info.run_id
 
     # 2. Fetch the run → extract metrics
     # Hint: run = MLFLOW_CLIENT.get_run(run_id)
     #       all_metrics = run.data.metrics
     #       Filter to keys starting with "test_" or "val_"
+
+    run = MLFLOW_CLIENT.get_run(run_id=run_id)
+
 
     # 3. Download diagnostic artifacts → base64 encode each PNG
     # Hint: local_dir = MLFLOW_CLIENT.download_artifacts(run_id, "diagnostics")

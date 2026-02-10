@@ -13,9 +13,9 @@ DEFAULT_ENV_FILE = PROJECT_ROOT / "configs" / "config.env.local"
 class Settings(BaseSettings):
     # Default settings for local def
 
-    database_url: str = "sqlite:///./dev.db"
+    database_url: str = f"sqlite:///{str(PROJECT_ROOT)}/dev.db"
 
-    mlflow_tracking_uri: str = "file:./mlruns"
+    mlflow_tracking_uri: str = f"sqlite:///{str(PROJECT_ROOT)}/mlflow.db"
 
     marketstack_api_key: str | None = None
 
