@@ -377,6 +377,9 @@ def _get_champion_run_data() -> dict:
 
     run = MLFLOW_CLIENT.get_run(run_id=run_id)
 
+    metrics_dict = run.data.metrics
+    test_acc = metrics_dict.get("test_accuracy")
+    test_auc_roc = metrics_dict.get("test_roc_auc")
 
     # 3. Download diagnostic artifacts → base64 encode each PNG
     # Hint: local_dir = MLFLOW_CLIENT.download_artifacts(run_id, "diagnostics")
@@ -385,8 +388,43 @@ def _get_champion_run_data() -> dict:
     #       Read bytes → base64.b64encode(bytes).decode("utf-8")
     #       Skip missing files gracefully (older runs may lack some plots)
 
-    # 4. Return assembled dict matching ModelInfoResponse fields
-    pass
+    tmp_path = Path("/tmp")
+    tmp_path.mkdir(exist_ok=True)
+    local_dir = MLFLOW_CLIENT.download_artifacts(run_id, "diagnostics", tmp_path)
+
+    # 4. Read downloaded PNG files and convert to base64
+    diagnostics_dir = Path(local_dir)
+    diagnostics = {}
+
+    # Expected plot filenames
+    plot_files = {
+        "feature_importance": "feature_importance.png",
+        "confusion_matrix": "confusion_matrix.png",
+        "roc_curve": "roc_curve.png",
+    }
+
+    for plot_name, filename in plot_files.items():
+        plot_path = diagnostics_dir / filename
+        if plot_path.exists():
+            # Read the PNG file as bytes
+            with open(plot_path, "rb") as f:
+                img_bytes = f.read()
+            # Convert bytes to base64 string
+            diagnostics[plot_name] = base64.b64encode(img_bytes).decode("utf-8")
+        else:
+            logger.warning(f"Plot not found: {plot_path}")
+
+    # 5. Return assembled dict matching ModelInfoResponse fields
+    return {
+        "model_version": str(version_info.version),
+        "model_alias": settings.model_alias,
+        "run_id": run_id,
+        "metrics": {
+            "test_accuracy": test_acc,
+            "test_roc_auc": test_auc_roc,
+        },
+        "diagnostics": diagnostics,
+    }
 
 
 @app.get("/model/info", response_model=ModelInfoResponse)
