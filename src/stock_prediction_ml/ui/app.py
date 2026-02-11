@@ -2,15 +2,14 @@
 
 import streamlit as st
 
-from stock_prediction_ml.ui.pages.prediction import main as prediction_page
-
 # from stock_prediction_ml.ui.pages.historical import main as historical_page
 from stock_prediction_ml.ui.pages.about_model import main as about_model_page
-
+from stock_prediction_ml.ui.pages.prediction import main as prediction_page
 
 # =============================================================================
 # STYLES - Inject custom CSS for hover effects and tool styling
 # =============================================================================
+
 
 def inject_custom_css():
     """Inject custom CSS for sidebar navigation and tool button styling.
@@ -21,7 +20,8 @@ def inject_custom_css():
         - Sidebar button hover effects (green glow, background tint)
         - Left-aligned button text within sidebar
     """
-    st.markdown('''
+    st.markdown(
+        """
         <style>
         /* Hide default Streamlit multi-page navigation */
         [data-testid="stSidebarNav"] {
@@ -73,12 +73,15 @@ def inject_custom_css():
             background: rgba(76, 175, 80, 0.1);
         }
         </style>
-        ''', unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # =============================================================================
 # COMPONENTS - Reusable UI pieces
 # =============================================================================
+
 
 def tool_button(emoji: str, label: str, key: str) -> bool:
     """Render a sidebar navigation button with emoji prefix.
@@ -95,7 +98,7 @@ def tool_button(emoji: str, label: str, key: str) -> bool:
     Returns:
         True if the button was clicked this render cycle, False otherwise.
     """
-    clicked = st.button(f"{emoji} {label}", key=key, width='stretch')
+    clicked = st.button(f"{emoji} {label}", key=key, width="stretch")
     return clicked
 
 
@@ -122,6 +125,7 @@ def category_box(title: str, tools: list[tuple[str, str, str]]):
 # =============================================================================
 # PAGES - Content for each section
 # =============================================================================
+
 
 def welcome_page():
     """Render the welcome/landing page shown when no tool is selected.
@@ -245,6 +249,7 @@ def render_current_page():
 # =============================================================================
 # MAIN - Entry point
 # =============================================================================
+
 
 def main():
     """Application entry point — configures page, injects CSS, and renders.
