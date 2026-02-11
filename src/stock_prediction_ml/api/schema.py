@@ -65,8 +65,6 @@ class ModelInfoResponse(BaseModel):
     model_version: str = Field(..., example="3")
     model_alias: str = Field(..., example="champion")
     run_id: str = Field(..., example="7d4dbfd5a9264229841cfdbc742f7f07")
-
-    # Filtered to test_* and val_* metrics from MLflow run
     metrics: dict[str, float] = Field(
         ...,
         example={"test_accuracy": 0.68, "test_roc_auc": 0.72},
