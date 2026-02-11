@@ -14,55 +14,78 @@ from stock_prediction_ml.ui.components.api_client import get_model_info
 
 
 def render_metrics_dashboard(metrics: dict) -> None:
-    """Display performance metrics in a 4-column grid.
+    """Display test set performance metrics in a two-column layout.
 
     Args:
-        metrics: Dict with keys like test_accuracy, test_roc_auc,
-                 val_accuracy, val_roc_auc (float values).
-
-    Hint:
-        - Use st.columns(4) for a row of metrics
-        - st.metric(label=..., value=...) for each
-        - Consider formatting: f"{value:.1%}" for percentages
-        - You could show val metrics as delta below test metrics,
-          or keep them as separate st.metric() calls
+        metrics: Dict containing test performance metrics with keys:
+                 - test_accuracy: Classification accuracy (0-1 float)
+                 - test_roc_auc: Area under ROC curve (0-1 float)
     """
-    pass
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(label="Accuracy", value=f"{100*metrics['test_accuracy']:.2f}%")
+    with col2:
+        st.metric(label="ROC AUC", value=f"{100*metrics['test_roc_auc']:.2f}%")
 
 
 def render_diagnostic_plots(diagnostics: dict) -> None:
-    """Display diagnostic plots in a tabbed interface.
+    """Display model diagnostic plots in a tabbed interface.
+
+    Creates three tabs showing feature importance, confusion matrix, and ROC curve.
+    Each plot is decoded from base64 PNG and displayed with an explanatory caption.
 
     Args:
-        diagnostics: Dict mapping plot names to base64-encoded PNG strings.
+        diagnostics: Dict mapping snake_case plot names to base64-encoded PNG strings.
                      Expected keys: feature_importance, confusion_matrix, roc_curve
-
-    Hint:
-        - st.tabs(["Feature Importance", "Confusion Matrix", "ROC Curve"])
-        - For each tab: decode with base64.b64decode(encoded_str)
-        - Display with st.image(decoded_bytes, use_container_width=True)
-        - Handle missing plots: check if key exists and value is non-empty
-        - Add a brief caption under each plot explaining what it shows
     """
-    pass
+    plot_list = ["Feature Importance", "Confusion Matrix", "ROC Curve"]
+    plot_captions = {
+    "Feature Importance": (
+        "Shows which features contribute most to model predictions."
+    ),
+    "Confusion Matrix": (
+        "Compares predicted vs actual labels. Diagonal = correct predictions."
+    ),
+    "ROC Curve": (
+        "Trade-off between true positive rate and false positive rate. "
+        "Higher AUC = better."
+    ),
+}
+
+
+    tabs = st.tabs(plot_list)
+    for tab, plot in zip(tabs, plot_list):
+        with tab:
+            string_list = plot.split()
+            formatted_plot_name = "_".join(string_list)
+            decoded_image = base64.b64decode(diagnostics[formatted_plot_name.lower()])
+            st.image(decoded_image, width="content")
+            st.caption(plot_captions[plot])
 
 
 def main() -> None:
-    """Entry point for the About Model page."""
+    """Entry point for the About Model page.
+
+    Fetches champion model information from the API and displays:
+        1. Performance metrics (accuracy, ROC AUC)
+        2. Diagnostic plots (feature importance, confusion matrix, ROC curve)
+
+    If API call fails, shows error message and stops rendering.
+    """
     st.header("About the Model")
 
-    # Fetch model info from API
-    # Hint: get_model_info() returns dict or None
-    # On None → st.error() + st.stop()
+    model_info = get_model_info()
+    if model_info is None:
+        st.error("Fetching model info error")
+        st.stop()
 
-    # Model identity section
-    # Hint: show model_version, model_alias, and run_id
-    # Ideas: st.markdown() with bold labels, or st.columns() with st.metric()
-    # An st.expander("Run Details") for run_id keeps it clean
+    st.divider()
 
-    # Metrics section
-    # render_metrics_dashboard(info["metrics"])
+    st.subheader("Performance Metrics")
+    render_metrics_dashboard(model_info["metrics"])
 
-    # Diagnostic plots section
-    # render_diagnostic_plots(info["diagnostics"])
-    pass
+    st.divider()
+
+    st.subheader("Diagnostic Plots")
+    render_diagnostic_plots(model_info["diagnostics"])
