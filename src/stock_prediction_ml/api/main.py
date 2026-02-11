@@ -343,17 +343,21 @@ async def predict(request: StockRequest) -> PredictionResponse:
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
-    
-    prediction_class = model_prediction_df['prediction_class'].iloc[0]
+
+    prediction_class = model_prediction_df["prediction_class"].iloc[0]
 
     if prediction_class == 1:
         prediction_label = "UP"
         confidence = float(model_prediction_df["prediction_proba_up"].iloc[0])  # P(UP)
     else:
         prediction_label = "DOWN"
-        confidence = float(model_prediction_df["prediction_proba_down"].iloc[0])  # P(DOWN)
+        confidence = float(
+            model_prediction_df["prediction_proba_down"].iloc[0]
+        )  # P(DOWN)
 
-    logger.info(f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})")
+    logger.info(
+        f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})"
+    )
 
     # Parse pyfunc output and return response
     return PredictionResponse(
@@ -435,7 +439,9 @@ def _get_champion_run_data() -> dict:
                     img_bytes = f.read()
                 diagnostics[plot_name] = base64.b64encode(img_bytes).decode("utf-8")
             else:
-                logger.warning(f"Diagnostic plot not found (may not exist in run): {filename}")
+                logger.warning(
+                    f"Diagnostic plot not found (may not exist in run): {filename}"
+                )
     finally:
         # Clean up temporary directory
         shutil.rmtree(temp_dir, ignore_errors=True)
