@@ -76,9 +76,9 @@ def predict(symbol: str, date: str) -> dict | None:
 
     try:
         response = httpx.post(
-            f"{API_BASE_URL}/predict", 
-            json=payload, 
-            timeout=10.0  # Predictions may take longer
+            f"{API_BASE_URL}/predict",
+            json=payload,
+            timeout=10.0,  # Predictions may take longer
         )
         response.raise_for_status()
         return response.json()
