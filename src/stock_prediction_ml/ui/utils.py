@@ -1,6 +1,5 @@
 """Consolidated utility functions for Streamlit UI."""
 
-
 from datetime import date, datetime, timedelta
 
 from stock_prediction_ml.config.settings import settings
@@ -65,5 +64,5 @@ def format_prediction_result(result: dict) -> dict:
         "direction": direction,
         "confidence": f"{confidence}%",
         "color": color,
-        "emoji": emoji
+        "emoji": emoji,
     }
