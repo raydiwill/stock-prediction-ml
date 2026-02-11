@@ -1,29 +1,44 @@
 """Stock Prediction API.
 
-This module provides a FastAPI-based REST API for predicting next-day
-stock price direction (up/down) using a trained CatBoost model.
+FastAPI-based REST API for predicting next-day stock price direction using
+a production CatBoost classifier with MLflow model serving and Feast feature store.
 
 Architecture:
-    - Model: Loaded from MLflow Model Registry (pyfunc wrapper)
-    - Features: Retrieved from Feast online store (SQLite backend)
-    - Predictions: Binary classification (0=DOWN, 1=UP) with probabilities
+    - Model Serving: MLflow Model Registry with pyfunc wrapper and champion alias
+    - Feature Store: Feast online store (SQLite backend) for low-latency retrieval
+    - Predictions: Binary classification (0=DOWN, 1=UP) with class probabilities
+    - Monitoring: Request logging middleware and health checks
 
 Endpoints:
-    GET /health: Check API and dependency status
-    POST /predict: Get stock movement prediction for a symbol
+    GET  /health      - Health check with dependency status
+    POST /predict     - Predict stock movement direction
+    GET  /model/info  - Champion model metrics and diagnostic plots
 
-Example:
-    Start the API:
-        $ uvicorn src.stock_prediction_ml.api.main:app --reload
+Usage:
+    Start API server:
+        $ uvicorn src.stock_prediction_ml.api.main:app --reload --port 8000
 
-    Make a prediction:
-        $ curl -X POST http://localhost:8000/predict \
-            -H "Content-Type: application/json" \
-            -d '{"symbol": "AAPL", "date": "2026-02-04"}'
+    Health check:
+        $ curl http://localhost:8000/health
+
+    Get prediction:
+        $ curl -X POST http://localhost:8000/predict \\
+               -H "Content-Type: application/json" \\
+               -d '{"symbol": "AAPL", "date": "2026-02-04"}'
+
+    View model info:
+        $ curl http://localhost:8000/model/info
+
+Notes:
+    - Predictions use latest materialized features; date param is for reference only
+    - Features must be materialized to online store before prediction requests
+    - Model and Feast store are loaded once at startup for performance
 """
 
 import base64
 import logging
+import shutil
+import tempfile
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
@@ -51,6 +66,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- Set MLflow Tracking URI at module import time ---
+# This prevents mlruns/ folder creation in API module directory
+mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+logger.info(f"MLflow tracking URI set to: {settings.mlflow_tracking_uri}")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FEAST_REPO_PATH = PROJECT_ROOT / "src" / "stock_prediction_ml" / "feast_repo"
@@ -108,14 +127,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Stock Prediction API...")
     logger.info("=" * 60)
 
-    # Set MLflow tracking URI
+    # Initialize MLflow client (tracking URI already set at module import)
     try:
-        logger.info("Connecting to MLflow...")
-        tracking_uri = settings.mlflow_tracking_uri
-        mlflow.set_tracking_uri(tracking_uri)
-        MLFLOW_CLIENT = MlflowClient(tracking_uri=tracking_uri)
+        logger.info("Initializing MLflow client...")
+        MLFLOW_CLIENT = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
     except Exception as e:
-        logger.error(f"Failed to connect to MLflow: {e}")
+        logger.error(f"Failed to initialize MLflow client: {e}")
 
     # Load pyfunc model from Model Registry
     try:
@@ -182,7 +199,15 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next: Callable) -> Response:
-    """Log request details and latency for observability."""
+    """Log HTTP request method, path, status code, and latency.
+
+    Args:
+        request: Incoming HTTP request.
+        call_next: Next middleware/handler in chain.
+
+    Returns:
+        Response: HTTP response from downstream handler.
+    """
     start_time = time.time()
 
     response = await call_next(request)
@@ -296,14 +321,7 @@ async def predict(request: StockRequest) -> PredictionResponse:
             status_code=500, detail=f"Feature retrieval failed: {str(e)}"
         )
 
-    # Validate features were returned
-    # Drop symbol, check if remaining features are all NaN
-
-    # feature_cols steps
-    # Step 1: isna Boolean mask (True = NaN, False = value exists)
-    # Step 2: all Check if ALL rows in each column are NaN → Series[bool]
-    # Step 3: all Check if ALL columns are all-NaN → single bool
-
+    # Validate features exist (all-NaN indicates symbol not found or not materialized)
     feature_cols = features_df.drop(columns=["symbol"], errors="ignore")
     if features_df.empty or feature_cols.isna().all().all():
         logger.error(f"No features found for symbol: {request.symbol}")
@@ -349,98 +367,121 @@ async def predict(request: StockRequest) -> PredictionResponse:
 
 
 def _get_champion_run_data() -> dict:
-    """Query MLflow for champion model's run metrics and diagnostic artifacts.
+    """Query MLflow for champion model's training run metrics and diagnostic plots.
+
+    Retrieves performance metrics and diagnostic visualizations (feature importance,
+    confusion matrix, ROC curve) from the MLflow run that produced the current
+    champion model. Artifacts are downloaded and base64-encoded for API transport.
 
     Returns:
-        dict with keys: model_version, model_alias, run_id, metrics, diagnostics
+        dict: Model metadata with structure matching ModelInfoResponse:
+            - model_version: Model registry version number
+            - model_alias: Alias name (e.g., "champion")
+            - run_id: MLflow run ID that created the model
+            - metrics: Test set performance metrics (accuracy, ROC AUC)
+            - diagnostics: Base64-encoded PNG plots (feature_importance,
+                          confusion_matrix, roc_curve)
 
     Raises:
-        RuntimeError: If MLflow client is unavailable or query fails.
+        RuntimeError: If MLflow client not initialized.
+        Exception: If model version lookup, run query, or artifact download fails.
+
+    Note:
+        Missing metrics default to None. Missing diagnostic plots are logged
+        and skipped rather than raising errors (older runs may lack some plots).
     """
     if MLFLOW_CLIENT is None:
         raise RuntimeError("MLflow client not initialized")
 
-    # 1. Get champion model version object → extract run_id
-    # Hint: same pattern as lifespan lines 134-138
-    # version_info = MLFLOW_CLIENT.get_model_version_by_alias(...)
-    # run_id = version_info.run_id
+    # Get champion model version and extract training run ID
     version_info = MLFLOW_CLIENT.get_model_version_by_alias(
         name=settings.registered_model_name,
         alias=settings.model_alias,
     )
     run_id = version_info.run_id
 
-    # 2. Fetch the run → extract metrics
-    # Hint: run = MLFLOW_CLIENT.get_run(run_id)
-    #       all_metrics = run.data.metrics
-    #       Filter to keys starting with "test_" or "val_"
-
+    # Fetch training run metrics
     run = MLFLOW_CLIENT.get_run(run_id=run_id)
-
     metrics_dict = run.data.metrics
-    test_acc = metrics_dict.get("test_accuracy")
-    test_auc_roc = metrics_dict.get("test_roc_auc")
 
-    # 3. Download diagnostic artifacts → base64 encode each PNG
-    # Hint: local_dir = MLFLOW_CLIENT.download_artifacts(run_id, "diagnostics")
-    #       This downloads to a temp dir and returns the local path
-    #       Loop over expected filenames: feature_importance.png, confusion_matrix.png, roc_curve.png
-    #       Read bytes → base64.b64encode(bytes).decode("utf-8")
-    #       Skip missing files gracefully (older runs may lack some plots)
-
-    tmp_path = Path("/tmp")
-    tmp_path.mkdir(exist_ok=True)
-    local_dir = MLFLOW_CLIENT.download_artifacts(run_id, "diagnostics", tmp_path)
-
-    # 4. Read downloaded PNG files and convert to base64
-    diagnostics_dir = Path(local_dir)
-    diagnostics = {}
-
-    # Expected plot filenames
-    plot_files = {
-        "feature_importance": "feature_importance.png",
-        "confusion_matrix": "confusion_matrix.png",
-        "roc_curve": "roc_curve.png",
+    # Extract test set metrics (default to None if not logged)
+    metrics = {
+        "test_accuracy": metrics_dict.get("test_accuracy"),
+        "test_roc_auc": metrics_dict.get("test_roc_auc"),
     }
 
-    for plot_name, filename in plot_files.items():
-        plot_path = diagnostics_dir / filename
-        if plot_path.exists():
-            # Read the PNG file as bytes
-            with open(plot_path, "rb") as f:
-                img_bytes = f.read()
-            # Convert bytes to base64 string
-            diagnostics[plot_name] = base64.b64encode(img_bytes).decode("utf-8")
-        else:
-            logger.warning(f"Plot not found: {plot_path}")
+    # Download diagnostic plot artifacts to temp directory
+    temp_dir = Path(tempfile.mkdtemp(prefix="mlflow_diagnostics_"))
+    try:
+        local_dir = MLFLOW_CLIENT.download_artifacts(
+            run_id=run_id,
+            path="diagnostics",
+            dst_path=str(temp_dir),
+        )
+        diagnostics_dir = Path(local_dir)
 
-    # 5. Return assembled dict matching ModelInfoResponse fields
+        # Base64-encode each diagnostic plot
+        diagnostics = {}
+        plot_files = {
+            "feature_importance": "feature_importance.png",
+            "confusion_matrix": "confusion_matrix.png",
+            "roc_curve": "roc_curve.png",
+        }
+
+        for plot_name, filename in plot_files.items():
+            plot_path = diagnostics_dir / filename
+            if plot_path.exists():
+                with open(plot_path, "rb") as f:
+                    img_bytes = f.read()
+                diagnostics[plot_name] = base64.b64encode(img_bytes).decode("utf-8")
+            else:
+                logger.warning(f"Diagnostic plot not found (may not exist in run): {filename}")
+    finally:
+        # Clean up temporary directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
     return {
         "model_version": str(version_info.version),
         "model_alias": settings.model_alias,
         "run_id": run_id,
-        "metrics": {
-            "test_accuracy": test_acc,
-            "test_roc_auc": test_auc_roc,
-        },
+        "metrics": metrics,
         "diagnostics": diagnostics,
     }
 
 
 @app.get("/model/info", response_model=ModelInfoResponse)
 async def get_model_info() -> ModelInfoResponse:
-    """Get champion model metadata, metrics, and diagnostic plots.
+    """Retrieve champion model metadata, performance metrics, and diagnostic plots.
 
-    Queries MLflow Model Registry for the current champion model's
-    run metrics and downloads diagnostic plot artifacts.
+    Queries the MLflow Model Registry for the current champion model's training
+    run information, including test set performance metrics and diagnostic
+    visualizations. Useful for model monitoring dashboards and debugging
+    prediction behavior.
 
     Returns:
-        ModelInfoResponse: Model version, performance metrics, and
-            base64-encoded diagnostic plots.
+        ModelInfoResponse: Contains:
+            - model_version: Registry version number of champion model
+            - model_alias: Alias name used to identify champion (e.g., "champion")
+            - run_id: MLflow run ID that produced the model
+            - metrics: Test performance metrics (accuracy, ROC AUC, etc.)
+            - diagnostics: Base64-encoded PNG images of diagnostic plots:
+                * feature_importance: Top features by model weight
+                * confusion_matrix: Classification error breakdown
+                * roc_curve: True positive vs false positive rate
 
     Raises:
-        HTTPException 503: If MLflow client not initialized.
-        HTTPException 500: If model info retrieval fails.
+        HTTPException 503: MLflow client not available (startup failure).
+        HTTPException 500: Model info query or artifact download failed.
+
+    Example:
+        GET /model/info
+        Response: {
+            "model_version": "3",
+            "model_alias": "champion",
+            "run_id": "abc123...",
+            "metrics": {"test_accuracy": 0.87, "test_roc_auc": 0.92},
+            "diagnostics": {"feature_importance": "iVBORw0KGgo...", ...}
+        }
     """
     try:
         data = _get_champion_run_data()
