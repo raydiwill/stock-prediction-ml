@@ -63,10 +63,9 @@ def test_tables_exist():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
 
-    # We should have these 3 tables
+    # We should have these 2 tables
     assert "RawStockData" in table_names
     assert "PredictionResults" in table_names
-    assert "ModelMetadata" in table_names
 
 
 def test_able_to_insert_stock_data_into_db(test_db, sample_stock):

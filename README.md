@@ -164,13 +164,19 @@ uv run python -m stock_prediction_ml.marketstack.pull
 # 2. Validate data
 uv run python -m stock_prediction_ml.data_validation.validation
 
+# 3. Ingest raw data into DB
+uv run python -m stock_prediction_ml.db.setup_db  # To create db tables if not done
+uv run python -m stock_prediction_ml.db.ingest  # Ingestion
+
 # 3. Build features
 uv run python -m stock_prediction_ml.features.build_features
 
 # 4. Apply Feast & materialize
 cd src/stock_prediction_ml/feast_repo
 feast apply
-feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
+feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S) # Daily run for only new data
+feast materialize 2020-01-01T00:00:00 $(date +%Y-%m-%dT%H:%M:%S) # From beginning of data to now
+
 
 # 5. Train model
 uv run python src/stock_prediction_ml/model/train.py --config configs/training/local.yaml

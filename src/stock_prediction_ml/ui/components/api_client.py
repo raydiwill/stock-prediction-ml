@@ -35,6 +35,30 @@ def health_check() -> dict | None:
         return None
 
 
+@st.cache_data(ttl=300)
+def get_model_info() -> dict | None:
+    """Fetch champion model info (metrics + diagnostics) from backend.
+
+    Returns:
+        dict with keys: model_version, model_alias, run_id, metrics, diagnostics
+        None if request fails
+
+    Note:
+        Cached for 5 minutes — champion model changes infrequently.
+        diagnostics values are base64-encoded PNG strings.
+    """
+    try:
+        response = httpx.get(f"{API_BASE_URL}/model/info", timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Model info request failed with status {e.response.status_code}")
+        return None
+    except httpx.RequestError as e:
+        logger.error(f"Model info connection error: {e}")
+        return None
+
+
 def predict(symbol: str, date: str) -> dict | None:
     """Request stock prediction from FastAPI backend.
 
@@ -52,9 +76,9 @@ def predict(symbol: str, date: str) -> dict | None:
 
     try:
         response = httpx.post(
-            f"{API_BASE_URL}/predict", 
-            json=payload, 
-            timeout=10.0  # Predictions may take longer
+            f"{API_BASE_URL}/predict",
+            json=payload,
+            timeout=10.0,  # Predictions may take longer
         )
         response.raise_for_status()
         return response.json()

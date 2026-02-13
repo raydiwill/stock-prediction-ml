@@ -57,7 +57,6 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 4. **Database models** ([`src/stock_prediction_ml/db/models.py`](src/stock_prediction_ml/db/models.py))
    - `RawStockData`: stores ingested stock data with hash-based deduplication
    - `PredictionResult`: stores model predictions with metadata
-   - `ModelMetadata`: tracks MLflow runs, versions, metrics, and active models
    - Ingestion pipeline ([`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py)) with adaptive batching
 
 5. **Model training** ([`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py))
