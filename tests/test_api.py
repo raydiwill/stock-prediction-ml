@@ -9,6 +9,12 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from stock_prediction_ml.db.models import Base, PredictionResult, RawStockData
+from stock_prediction_ml.db.session import get_db
 
 # ==================== FIXTURES ====================
 
@@ -100,10 +106,26 @@ def mock_feast_store(mock_features_df):
 
 
 @pytest.fixture
-def client_with_dependencies(mocker, mock_model, mock_feast_store):
+def test_db_session():
+    """In-memory SQLite session for hermetic testing."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    TestSession = sessionmaker(bind=engine)
+    session = TestSession()
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def client_with_dependencies(mocker, mock_model, mock_feast_store, test_db_session):
     """Create TestClient with all dependencies loaded (healthy state).
 
     Patches main.py global variables: MODEL, FEAST_STORE, MODEL_VERSION.
+    Overrides get_db to use in-memory test database.
     """
     mocker.patch("stock_prediction_ml.api.main.MODEL", mock_model)
     mocker.patch("stock_prediction_ml.api.main.FEAST_STORE", mock_feast_store)
@@ -111,11 +133,20 @@ def client_with_dependencies(mocker, mock_model, mock_feast_store):
 
     from stock_prediction_ml.api.main import app
 
-    return TestClient(app, raise_server_exceptions=False)
+    def override_get_db():
+        try:
+            yield test_db_session
+        finally:
+            pass  # Fixture manages session lifecycle
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    yield TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def client_without_model(mocker, mock_feast_store):
+def client_without_model(mocker, mock_feast_store, test_db_session):
     """Create TestClient with MODEL=None (simulates model load failure)."""
     mocker.patch("stock_prediction_ml.api.main.MODEL", None)
     mocker.patch("stock_prediction_ml.api.main.FEAST_STORE", mock_feast_store)
@@ -123,7 +154,10 @@ def client_without_model(mocker, mock_feast_store):
 
     from stock_prediction_ml.api.main import app
 
-    return TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides[get_db] = lambda: test_db_session
+
+    yield TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides.clear()
 
 
 # ==================== HEALTH ENDPOINT TESTS ====================
@@ -206,9 +240,7 @@ class TestPredictEndpoint:
 
         assert response.status_code == 404
 
-    def test_predict_model_failure_returns_500(
-        self, mocker, mock_feast_store, mock_features_df
-    ):
+    def test_predict_model_failure_returns_500(self, mocker, mock_feast_store):
         """Verify /predict returns 500 when model.predict() raises an exception."""
         mock_model_error = Mock()
         mock_model_error.predict.side_effect = Exception("Model Failed")
@@ -234,6 +266,63 @@ class TestPredictEndpoint:
         )
 
         assert response.status_code == 503
+
+
+# ==================== PREDICTION PERSISTENCE TESTS ====================
+
+
+class TestPredictPersistence:
+    """Tests for prediction DB persistence in POST /predict."""
+
+    def test_predict_persists_to_db(self, client_with_dependencies, test_db_session):
+        """Verify prediction is saved to PredictionResults when RawStockData exists."""
+        test_db_session.add(
+            RawStockData(
+                id=1,
+                symbol="AAPL",
+                date=pd.to_datetime("2025-12-08"),
+                open=28.2,
+                close=28.1,
+                high=29.0,
+                low=28.0,
+                volume=1000,
+                adj_close=28.05,
+                source="api",
+                hash_input="abcd2132",
+                pulled_at=pd.to_datetime("2025-12-08"),
+                parquet_path="test_path",
+                validated=True,
+            )
+        )
+        test_db_session.commit()
+
+        _ = client_with_dependencies.post(
+            "/predict", json={"symbol": "AAPL", "date": "2025-12-08"}
+        )
+
+        queried = (
+            test_db_session.query(PredictionResult)
+            .filter(PredictionResult.raw_stock_data_id == 1)
+            .first()
+        )
+
+        assert queried is not None, "Expected PredictionResult row but found None"
+        assert queried.prediction in [0, 1]
+        assert 0.0 <= queried.probability <= 1.0
+        assert queried.raw_data.symbol == "AAPL"
+
+    def test_predict_succeeds_without_raw_data_row(
+        self, client_with_dependencies, test_db_session
+    ):
+        """Verify /predict returns 200 even when no RawStockData row exists (no DB save)."""
+        response = client_with_dependencies.post(
+            "/predict", json={"symbol": "AAPL", "date": "2025-12-08"}
+        )
+
+        queried = test_db_session.query(PredictionResult).all()
+
+        assert response.status_code == 200
+        assert not queried
 
 
 # ==================== VALIDATION TESTS ====================
