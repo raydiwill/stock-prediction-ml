@@ -40,22 +40,30 @@ import logging
 import shutil
 import tempfile
 import time
+from datetime import UTC, datetime
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import mlflow
-from fastapi import FastAPI, HTTPException, Request, Response
+import pandas as pd
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from feast import FeatureStore
 from mlflow.tracking import MlflowClient
 
+from sqlalchemy.orm import Session
+
 from stock_prediction_ml.api.schema import (
+    DailyRecord,
     HealthResponse,
+    HistoricalDataResponse,
     ModelInfoResponse,
     PredictionResponse,
     StockRequest,
 )
+from stock_prediction_ml.db.models import PredictionResult, RawStockData
+from stock_prediction_ml.db.session import get_db
 from stock_prediction_ml.api.utils import check_dependencies
 from stock_prediction_ml.config.settings import settings
 
@@ -261,7 +269,7 @@ async def health_check() -> HealthResponse:
 
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(request: StockRequest) -> PredictionResponse:
+async def predict(request: StockRequest, db: Session = Depends(get_db)) -> PredictionResponse:
     """Predict next-day stock price movement direction.
 
     Uses the latest features from Feast online store and the champion
@@ -358,6 +366,46 @@ async def predict(request: StockRequest) -> PredictionResponse:
     logger.info(
         f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})"
     )
+
+    # --- Persist prediction to database ---
+    try:
+        prediction_date = pd.to_datetime(request.date)
+
+        raw_stock_row = db.query(RawStockData).filter(
+            RawStockData.symbol == request.symbol,
+            RawStockData.date == prediction_date
+        ).first()
+
+        if raw_stock_row is None:
+            logger.warning(
+                f"No RawStockData row for {request.symbol} on {request.date}. "
+                "Prediction will not be persisted."
+            )
+        else:
+            # Convert to dict
+            features_dict = (
+                features_df.drop(columns=["symbol"], errors="ignore")
+                .iloc[0]
+                .to_dict()
+            )
+            # Convert numpy float to native float
+            features_dict = {k: float(v) for k, v in features_dict.items()}
+
+            db.add(PredictionResult(
+                raw_stock_data_id=raw_stock_row.id,
+                predicted_at=datetime.now(UTC),
+                model_name=f"{settings.registered_model_name}@{settings.model_alias}/v{MODEL_VERSION}",
+                prediction=int(prediction_class),
+                probability=confidence,
+                features_used=features_dict
+            ))
+            db.commit()
+            logger.info(f"Prediction persisted for {request.symbol} on {request.date}")
+
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to persist prediction to DB: {e}")
 
     # Parse pyfunc output and return response
     return PredictionResponse(
@@ -498,3 +546,118 @@ async def get_model_info() -> ModelInfoResponse:
         raise HTTPException(status_code=500, detail=f"Model info retrieval failed: {e}")
 
     return ModelInfoResponse(**data)
+
+
+@app.get("/stock/history", response_model=HistoricalDataResponse)
+async def get_stock_history(
+    symbol: str = Query(..., description="Stock ticker symbol"),
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+) -> HistoricalDataResponse:
+    """Retrieve daily close prices with actual vs predicted direction."""
+    
+    # 1. Validate symbol
+    valid_symbols = settings.valid_symbols
+    if symbol.upper() not in valid_symbols:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"{symbol} is not a valid symbol!"
+        )
+
+    # 2. Parse and validate dates
+    try:
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid date format: {str(e)}"
+        )
+    
+    if end_dt < start_dt:
+        raise HTTPException(
+            status_code=400,
+            detail="end_date must be after start_date"
+        )
+
+    # 3. Query records in date range
+    records = (
+        db.query(RawStockData)
+        .filter(
+            RawStockData.symbol == symbol.upper(),
+            RawStockData.date >= start_dt,
+            RawStockData.date <= end_dt,
+        )
+        .order_by(RawStockData.date.asc())
+        .limit(365)  # Cap response size
+        .all()
+    )
+
+    if not records:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for {symbol} between {start_date} and {end_date}",
+        )
+
+    # 4. Get previous day for direction computation
+    previous_day = (
+        db.query(RawStockData)
+        .filter(
+            RawStockData.symbol == symbol.upper(),
+            RawStockData.date < start_dt
+        )
+        .order_by(RawStockData.date.desc())
+        .first()
+    )
+
+    # 5. Build daily records
+    daily_records = []
+    prev_close = previous_day.close if previous_day else None
+
+    for record in records:
+        current_close = record.close
+        
+        # Compute actual direction
+        if prev_close is not None:
+            actual_direction = "UP" if current_close > prev_close else "DOWN"
+        else:
+            actual_direction = None
+        
+        # Get prediction if exists
+        predicted_direction = None
+        probability = None
+        if record.predictions:
+            latest_pred = max(
+                record.predictions, 
+                key=lambda p: p.predicted_at
+            )
+            predicted_direction = "UP" if latest_pred.prediction == 1 else "DOWN"
+            probability = latest_pred.probability
+        
+        # Compute correctness
+        correct = None
+        if actual_direction and predicted_direction:
+            correct = (actual_direction == predicted_direction)
+        
+        daily_records.append(
+            DailyRecord(
+                date=record.date.strftime("%Y-%m-%d"),
+                close=current_close,
+                actual_direction=actual_direction,
+                predicted_direction=predicted_direction,
+                probability=probability,
+                correct=correct,
+            )
+        )
+        
+        prev_close = current_close
+
+    # 6. Return response
+    return HistoricalDataResponse(
+        symbol=symbol.upper(),
+        start_date=start_date,
+        end_date=end_date,
+        total_records=len(daily_records),
+        records=daily_records,
+    )
