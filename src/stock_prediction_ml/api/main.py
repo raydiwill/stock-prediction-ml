@@ -40,9 +40,9 @@ import logging
 import shutil
 import tempfile
 import time
-from datetime import UTC, datetime
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 import mlflow
@@ -51,7 +51,6 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from feast import FeatureStore
 from mlflow.tracking import MlflowClient
-
 from sqlalchemy.orm import Session
 
 from stock_prediction_ml.api.schema import (
@@ -62,10 +61,10 @@ from stock_prediction_ml.api.schema import (
     PredictionResponse,
     StockRequest,
 )
-from stock_prediction_ml.db.models import PredictionResult, RawStockData
-from stock_prediction_ml.db.session import get_db
 from stock_prediction_ml.api.utils import check_dependencies
 from stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.db.models import PredictionResult, RawStockData
+from stock_prediction_ml.db.session import get_db
 
 # --- Logging Setup ---
 logging.basicConfig(
