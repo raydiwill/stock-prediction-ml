@@ -25,7 +25,6 @@ def render_filters() -> tuple[str, date, date]:
         ticker = st.selectbox(
             "Choose a stock ticker:",
             get_valid_symbols(),
-            label_visibility="collapsed",
         )
     with col2:
         st.markdown("#### Historical Start Date")
@@ -48,18 +47,21 @@ def render_summary_metrics(data: dict) -> None:
     predicted_records = [
         record for record in data["records"] if record["predicted_direction"]
     ]
-    correct_predition = [
-        record for record in data["records"] if record["correct"]
-    ]
+    correct_prediction = [record for record in data["records"] if record["correct"]]
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Records fetch:", data["total_records"])
         with col2:
-            
+
             st.metric("How many were predicted:", len(predicted_records))
         with col3:
-            st.metric("Accuracy:", len(correct_predition) / len(predicted_records))
+            accuracy = (
+                f"{len(correct_prediction) / len(predicted_records):.2%}"
+                if len(predicted_records) > 0
+                else "N/A"
+            )
+            st.metric("Accuracy:", accuracy)
 
 
 def render_results_table(records: list[dict]) -> None:
@@ -74,6 +76,7 @@ def render_results_table(records: list[dict]) -> None:
         "close": "Close",
         "actual_direction": "Actual",
         "predicted_direction": "Predicted",
+        "probability": "Probability",
         "correct": "Correct",
     }
 
