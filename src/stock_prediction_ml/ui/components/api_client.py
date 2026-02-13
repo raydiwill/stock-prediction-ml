@@ -59,6 +59,38 @@ def get_model_info() -> dict | None:
         return None
 
 
+@st.cache_data(ttl=300)
+def get_historical_data(symbol: str, start_date: str, end_date: str) -> dict | None:
+    """Fetch historical OHLCV data and prediction overlays from backend.
+
+    Args:
+        symbol: Stock ticker (e.g., "AAPL").
+        start_date: Start date in YYYY-MM-DD format.
+        end_date: End date in YYYY-MM-DD format.
+
+    Returns:
+        dict with keys: symbol, start_date, end_date, total_records,
+            price_data (list of OHLCVRecord), predictions (list of PredictionOverlay).
+        None if the request fails.
+    """
+    payload = {"symbol": symbol, "start_date": start_date, "end_date": end_date}
+
+    try:
+        response = httpx.get(
+            f"{API_BASE_URL}/stock/history", params=payload, timeout=10.0
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            f"Historical stock data request failed with status {e.response.status_code}"
+        )
+        return None
+    except httpx.RequestError as e:
+        logger.error(f"Historical stock data connection error: {e}")
+        return None
+
+
 def predict(symbol: str, date: str) -> dict | None:
     """Request stock prediction from FastAPI backend.
 
