@@ -2,8 +2,8 @@
 
 import streamlit as st
 
-# from stock_prediction_ml.ui.pages.historical import main as historical_page
 from stock_prediction_ml.ui.pages.about_model import main as about_model_page
+from stock_prediction_ml.ui.pages.historical import main as historical_page
 from stock_prediction_ml.ui.pages.prediction import main as prediction_page
 
 # =============================================================================
@@ -200,7 +200,7 @@ MODEL_TOOLS = [
 PAGE_REGISTRY = {
     "home": welcome_page,
     "prediction": prediction_page,
-    # "historical": historical_page,
+    "historical": historical_page,
     "about_model": about_model_page,
 }
 
