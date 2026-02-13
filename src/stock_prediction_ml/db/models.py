@@ -47,19 +47,3 @@ class PredictionResult(Base):
     probability = Column(Float, nullable=False)
     features_used = Column(JSON, nullable=False)
     raw_data = relationship("RawStockData", back_populates="predictions")
-
-
-class ModelMetadata(Base):
-    __tablename__ = "ModelMetadata"
-
-    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
-    model_name = Column(String(100), nullable=False, unique=True, index=True)
-    mlflow_run_id = Column(String(100), nullable=False, index=True)
-    registry_version = Column(Integer, nullable=False, index=True)
-    stage = Column(String(50), nullable=False, index=True)
-    created_at = Column(DateTime, nullable=False, index=True)
-    metrics = Column(JSON, nullable=False)
-    parameters = Column(JSON, nullable=False)
-    features = Column(JSON, nullable=False)
-    notes = Column(Text, nullable=True)
-    active = Column(Boolean, default=True)
