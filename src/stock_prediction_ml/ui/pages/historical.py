@@ -4,14 +4,14 @@ Displays a table of daily close prices with actual vs predicted direction,
 letting users see where the model got it right (or wrong).
 """
 
-from datetime import date, timedelta, datetime
+from datetime import date, datetime, timedelta
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
-from stock_prediction_ml.ui.utils import get_valid_symbols
 from stock_prediction_ml.ui.components.api_client import get_historical_data
 from stock_prediction_ml.ui.components.plot import build_price_chart
+from stock_prediction_ml.ui.utils import get_valid_symbols
 
 # ── Session-state defaults ──────────────────────────────────────────────
 
@@ -48,9 +48,9 @@ def render_date_presets() -> None:
     cols = st.columns(len(_PRESETS))
     for col, (label, days) in zip(cols, _PRESETS.items()):
         with col:
-            if st.button(label, width='stretch'):
-                st.session_state["hist_start"] = (
-                    datetime.today().date() - timedelta(days=days)
+            if st.button(label, width="stretch"):
+                st.session_state["hist_start"] = datetime.today().date() - timedelta(
+                    days=days
                 )
                 st.session_state["hist_end"] = datetime.today().date()
                 st.rerun()
@@ -87,9 +87,7 @@ def render_filters() -> tuple[str, date, date]:
         )
     with col3:
         st.markdown("#### Historical End Date")
-        end_date = st.date_input(
-            "Choose the end date:", st.session_state["hist_end"]
-        )
+        end_date = st.date_input("Choose the end date:", st.session_state["hist_end"])
 
     # Persist selections
     st.session_state["hist_symbol"] = ticker
@@ -111,7 +109,9 @@ def _compute_streak(records: list[dict]) -> str:
     Returns:
         Human-readable streak string, e.g. "3 correct" or "2 incorrect".
     """
-    predicted = [r for r in records if r["predicted_direction"] and r["correct"] is not None]
+    predicted = [
+        r for r in records if r["predicted_direction"] and r["correct"] is not None
+    ]
     if not predicted:
         return "N/A"
 
@@ -138,9 +138,7 @@ def _direction_precision(records: list[dict], direction: str) -> str:
     Returns:
         Formatted percentage string or "N/A".
     """
-    predicted = [
-        r for r in records if r["predicted_direction"] == direction
-    ]
+    predicted = [r for r in records if r["predicted_direction"] == direction]
     if not predicted:
         return "N/A"
     correct = [r for r in predicted if r["correct"]]
@@ -148,7 +146,12 @@ def _direction_precision(records: list[dict], direction: str) -> str:
 
 
 def render_summary_metrics(data: dict) -> None:
-    """Display summary stats: total records, predicted count, accuracy, per-direction precision, streak.
+    """Display summary stats: 
+            total records, 
+            predicted count, 
+            accuracy, 
+            per-direction precision, 
+            streak.
 
     Args:
         data: The HistoricalDataResponse dict from the API.
@@ -224,7 +227,7 @@ def render_results_table(records: list[dict], predicted_only: bool = False) -> N
 
     st.dataframe(
         styled,
-        width='stretch',
+        width="stretch",
         hide_index=True,
         column_config={
             "Close": st.column_config.NumberColumn(format="$%.2f"),
@@ -277,7 +280,7 @@ def main() -> None:
                 "correct": "Correct",
             }
         )
-        st.plotly_chart(build_price_chart(chart_df), width='stretch')
+        st.plotly_chart(build_price_chart(chart_df), width="stretch")
 
         render_summary_metrics(records)
 
