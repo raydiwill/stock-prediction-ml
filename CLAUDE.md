@@ -6,7 +6,7 @@
 
 **Stock Price Prediction ML Pipeline** - Predicts next-day stock direction (up/down) using CatBoost classifier with MLflow tracking and Feast feature store.
 
-**Stack**: Python 3.13, FastAPI, MLflow, Feast, CatBoost, pytest, SQLAlchemy
+**Stack**: Python 3.13, FastAPI, Streamlit, MLflow, Feast, CatBoost, pytest, SQLAlchemy
 
 ## Quick Commands
 
@@ -22,6 +22,10 @@ pytest tests/test_api.py -v
 
 # Start API server
 uvicorn src.stock_prediction_ml.api.main:app --reload
+
+# Start Streamlit UI (requires API server running)
+./run_ui.sh
+# or: streamlit run src/stock_prediction_ml/ui/app.py
 
 # Apply Feast feature definitions
 cd src/stock_prediction_ml/feast_repo && feast apply
@@ -39,7 +43,6 @@ feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
 
 - **Monitoring**: Grafana/Prometheus for drift detection
 - **Deployment**: Docker containerization
-- **UI**: Streamlit dashboard for predictions
 
 ## Code Style
 
@@ -85,10 +88,11 @@ src/stock_prediction_ml/
 ├── feast_repo/    # Feature store definitions
 ├── model/         # Training pipeline (train.py)
 ├── features/      # Feature engineering
-├── db/            # SQLAlchemy models
-└── marketstack/   # Data ingestion
+├── db/            # SQLAlchemy models + session management
+├── marketstack/   # Data ingestion
+└── ui/            # Streamlit dashboard (pages, components, utils)
 
-tests/             # Pytest test modules
+tests/             # Pytest test modules (9 modules, 80+ tests)
 configs/           # YAML configs (training/local.yaml)
 notebooks/         # Jupyter exploration (01-06)
 ```
@@ -113,7 +117,10 @@ notebooks/         # Jupyter exploration (01-06)
 |---------|------|
 | Full project context | [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) |
 | API implementation | [src/stock_prediction_ml/api/main.py](src/stock_prediction_ml/api/main.py) |
+| API schemas | [src/stock_prediction_ml/api/schema.py](src/stock_prediction_ml/api/schema.py) |
 | Model training | [src/stock_prediction_ml/model/train.py](src/stock_prediction_ml/model/train.py) |
 | Settings | [src/stock_prediction_ml/config/settings.py](src/stock_prediction_ml/config/settings.py) |
-| Test patterns | [tests/test_train.py](tests/test_train.py), [tests/test_api.py](tests/test_api.py) |
+| Streamlit UI | [src/stock_prediction_ml/ui/app.py](src/stock_prediction_ml/ui/app.py) |
+| DB models | [src/stock_prediction_ml/db/models.py](src/stock_prediction_ml/db/models.py) |
+| Test patterns | [tests/test_train.py](tests/test_train.py), [tests/test_api.py](tests/test_api.py), [tests/test_ui.py](tests/test_ui.py) |
 | Training config | [configs/training/local.yaml](configs/training/local.yaml) |

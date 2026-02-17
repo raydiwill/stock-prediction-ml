@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.config.settings import settings
 
 DATABASE_URL = settings.database_url
 

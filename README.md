@@ -6,15 +6,16 @@
 ![MLflow](https://img.shields.io/badge/MLflow-Model%20Registry-orange)
 ![Feast](https://img.shields.io/badge/Feast-Feature%20Store-green)
 ![FastAPI](https://img.shields.io/badge/FastAPI-REST%20API-teal)
+![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red)
 ![Status](https://img.shields.io/badge/Status-92%25%20Complete-yellow)
 
 ---
 
 ## Status
 
-**Current Stage**: Core ML pipeline complete. REST API implemented with MLflow Model Registry + Feast online store integration.
+**Current Stage**: Full ML pipeline with REST API, Streamlit dashboard, and comprehensive test suite (9 modules, 80+ tests).
 
-**Next Step**: Write comprehensive API tests with mocked dependencies, then containerize with Docker Compose.
+**Next Step**: Airflow DAGs for automated pipeline orchestration.
 
 | Component | Status |
 |-----------|--------|
@@ -24,10 +25,11 @@
 | Feature Store (Feast) | ✅ Complete |
 | Model Training + Registry | ✅ Complete |
 | REST API | ✅ Complete |
-| Airflow | 🚧 In Progress |
-| Grafana | ⏳ Planned |
-| UI | ⏳ Planned |
-| Docker/Orchestration | ⏳ Planned |
+| Streamlit UI | ✅ Complete |
+| Testing (80+ tests) | ✅ Complete |
+| Airflow Orchestration | ⏳ Planned |
+| Monitoring (Grafana) | ⏳ Planned |
+| Docker Deployment | ⏳ Planned |
 
 ---
 
@@ -42,6 +44,7 @@ A **portfolio project** demonstrating production ML practices for financial time
 - Trains a **CatBoost classifier** to predict if tomorrow's close > today's close
 - Tracks experiments and registers models via **MLflow**
 - Serves predictions through a **FastAPI** endpoint with real-time feature retrieval
+- Visualizes predictions via a **Streamlit** dashboard with interactive charts
 
 **Why this project?** To try and get rich! *(But seriously speaking, I want to apply my uni knowledge and tutorial hells into practical projects, something I can used in daily stock trading)*
 
@@ -49,7 +52,7 @@ A **portfolio project** demonstrating production ML practices for financial time
 
 ## Live Demo
 
-> **Coming Soon** — A live demo will be available once the project is containerized and deployed. Check back for a link to test the prediction API!
+> **Coming Soon** — A live demo will be available once the project is containerized and deployed. The Streamlit dashboard currently runs locally with 3 pages: Live Prediction, Historical Data, and About Model.
 
 ---
 
@@ -70,12 +73,14 @@ A **portfolio project** demonstrating production ML practices for financial time
 | **Great Expectations** | Data validation and quality checks |
 | **pytest** | Testing with synthetic fixtures (hermetic CI) |
 
-### API & Infrastructure
+### API & UI
 | Technology | Purpose |
 |------------|---------|
-| **FastAPI** | REST API for model serving |
-| **SQLAlchemy** | ORM for prediction logging and model metadata |
-| **Pydantic** | Request/response validation |
+| **FastAPI** | REST API for model serving with prediction persistence |
+| **Streamlit** | Multi-page dashboard (Live Prediction, Historical Data, About Model) |
+| **Plotly** | Interactive price charts with prediction overlays |
+| **SQLAlchemy** | ORM for prediction audit trail and stock data storage |
+| **Pydantic** | Request/response schema validation |
 | **Docker** *(planned)* | Containerization for deployment |
 
 ---
@@ -122,7 +127,12 @@ A **portfolio project** demonstrating production ML practices for financial time
 - Health check endpoint validates model and Feast store are loaded
 - Production APIs need explicit dependency validation — fail fast on startup
 
-### 9. AI usage to speed up project
+### 9. Unit Testing for Streamlit UI
+- Tested pure logic (utils, API client, chart builders) rather than Streamlit rendering (low ROI due to side effects)
+- Used class-based test organization and httpx mocking for API client tests
+- `conftest.py` mocks Streamlit module before imports to prevent server initialization in CI
+
+### 10. AI usage to speed up project
 - Learned how to use AI as a pair programmer which helps learning and not vibe coding until everything is broken.
 - Before: 1 feature could take me weeks to complete.
 - Now: 1-2 days.
@@ -154,6 +164,10 @@ cd src/stock_prediction_ml/feast_repo && feast apply
 
 # Start API server (requires trained model + materialized features)
 uvicorn src.stock_prediction_ml.api.main:app --reload
+
+# Start Streamlit UI (requires API server running)
+./run_ui.sh
+# or: streamlit run src/stock_prediction_ml/ui/app.py
 ```
 
 ### Full Pipeline (Manual)
@@ -164,16 +178,26 @@ uv run python -m stock_prediction_ml.marketstack.pull
 # 2. Validate data
 uv run python -m stock_prediction_ml.data_validation.validation
 
+# 3. Ingest raw data into DB
+uv run python -m stock_prediction_ml.db.setup_db  # To create db tables if not done
+uv run python -m stock_prediction_ml.db.ingest  # Ingestion
+
 # 3. Build features
 uv run python -m stock_prediction_ml.features.build_features
 
 # 4. Apply Feast & materialize
 cd src/stock_prediction_ml/feast_repo
 feast apply
-feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
+feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S) # Daily run for only new data
+feast materialize 2020-01-01T00:00:00 $(date +%Y-%m-%dT%H:%M:%S) # From beginning of data to now
+
 
 # 5. Train model
 uv run python src/stock_prediction_ml/model/train.py --config configs/training/local.yaml
+
+# 6. Start API + UI
+uvicorn src.stock_prediction_ml.api.main:app --reload
+./run_ui.sh  # In a separate terminal
 ```
 
 > **Coming Soon**: `docker-compose up` to spin up the entire stack
@@ -184,18 +208,23 @@ uv run python src/stock_prediction_ml/model/train.py --config configs/training/l
 
 ```
 src/stock_prediction_ml/
-├── api/             # FastAPI endpoints + middleware
-├── config/          # Pydantic settings
-├── feast_repo/      # Feature store definitions
-├── model/           # Training pipeline + MLflow registry
+├── api/             # FastAPI endpoints + middleware + schema
+├── config/          # Centralized Pydantic settings
+├── feast_repo/      # Feature store definitions + services
+├── model/           # Training pipeline + MLflow registry + pyfunc wrapper
 ├── features/        # Feature engineering (30+ indicators)
 ├── data_validation/ # Great Expectations suite
-├── db/              # SQLAlchemy models
-└── marketstack/     # Data ingestion
+├── db/              # SQLAlchemy models + session + ingestion
+├── marketstack/     # Data ingestion from MarketStack API
+└── ui/              # Streamlit dashboard
+    ├── app.py           # Entry point + navigation
+    ├── utils.py         # Symbol validation, formatting
+    ├── components/      # API client (httpx), Plotly charts
+    └── pages/           # Prediction, Historical, About Model
 
-tests/               # Hermetic tests with synthetic fixtures
+tests/               # 9 modules, 80+ hermetic tests
 configs/             # YAML training configurations
-notebooks/           # Exploration & tuning (Optuna)
+notebooks/           # Exploration & tuning (01-06)
 ```
 
 ---
@@ -205,6 +234,8 @@ notebooks/           # Exploration & tuning (Optuna)
 Built as a learning project to understand production ML systems. Inspired by:
 - [Feast documentation](https://docs.feast.dev/)
 - [MLflow Model Registry](https://mlflow.org/docs/latest/model-registry.html)
+- [Streamlit documentation](https://docs.streamlit.io/)
+- [FastAPI documentation](https://fastapi.tiangolo.com/)
 
 ---
 

@@ -1,42 +1,70 @@
 """Stock Prediction API.
 
-This module provides a FastAPI-based REST API for predicting next-day
-stock price direction (up/down) using a trained CatBoost model.
+FastAPI-based REST API for predicting next-day stock price direction using
+a production CatBoost classifier with MLflow model serving and Feast feature store.
 
 Architecture:
-    - Model: Loaded from MLflow Model Registry (pyfunc wrapper)
-    - Features: Retrieved from Feast online store (SQLite backend)
-    - Predictions: Binary classification (0=DOWN, 1=UP) with probabilities
+    - Model Serving: MLflow Model Registry with pyfunc wrapper and champion alias
+    - Feature Store: Feast online store (SQLite backend) for low-latency retrieval
+    - Predictions: Binary classification (0=DOWN, 1=UP) with class probabilities
+    - Monitoring: Request logging middleware and health checks
 
 Endpoints:
-    GET /health: Check API and dependency status
-    POST /predict: Get stock movement prediction for a symbol
+    GET  /health      - Health check with dependency status
+    POST /predict     - Predict stock movement direction
+    GET  /model/info  - Champion model metrics and diagnostic plots
 
-Example:
-    Start the API:
-        $ uvicorn src.stock_prediction_ml.api.main:app --reload
+Usage:
+    Start API server:
+        $ uvicorn src.stock_prediction_ml.api.main:app --reload --port 8000
 
-    Make a prediction:
-        $ curl -X POST http://localhost:8000/predict \
-            -H "Content-Type: application/json" \
-            -d '{"symbol": "AAPL", "date": "2026-02-04"}'
+    Health check:
+        $ curl http://localhost:8000/health
+
+    Get prediction:
+        $ curl -X POST http://localhost:8000/predict \\
+               -H "Content-Type: application/json" \\
+               -d '{"symbol": "AAPL", "date": "2026-02-04"}'
+
+    View model info:
+        $ curl http://localhost:8000/model/info
+
+Notes:
+    - Predictions use latest materialized features; date param is for reference only
+    - Features must be materialized to online store before prediction requests
+    - Model and Feast store are loaded once at startup for performance
 """
 
+import base64
 import logging
+import shutil
+import tempfile
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 import mlflow
-from fastapi import FastAPI, HTTPException, Request, Response
+import pandas as pd
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from feast import FeatureStore
 from mlflow.tracking import MlflowClient
+from sqlalchemy.orm import Session
 
-from stock_prediction_ml.api.schema import HealthResponse, PredictionResponse, StockRequest
+from stock_prediction_ml.api.schema import (
+    DailyRecord,
+    HealthResponse,
+    HistoricalDataResponse,
+    ModelInfoResponse,
+    PredictionResponse,
+    StockRequest,
+)
 from stock_prediction_ml.api.utils import check_dependencies
 from stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.db.models import PredictionResult, RawStockData
+from stock_prediction_ml.db.session import get_db
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -45,15 +73,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- Set MLflow Tracking URI at module import time ---
+# This prevents mlruns/ folder creation in API module directory
+mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+logger.info(f"MLflow tracking URI set to: {settings.mlflow_tracking_uri}")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FEAST_REPO_PATH = PROJECT_ROOT / "src" / "stock_prediction_ml" / "feast_repo"
-MLRUNS_PATH = PROJECT_ROOT / "mlruns"
 
 # --- Global Variables (loaded on startup) ---
 MODEL = None  # pyfunc model (bundles encoder + features internally)
 FEAST_STORE = None
 MODEL_VERSION = None
+MLFLOW_CLIENT = None  # MlflowClient instance for registry queries
 
 
 def validate_startup() -> None:
@@ -96,20 +128,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Raises:
         Logs errors but does not raise - allows partial startup for debugging.
     """
-    global MODEL, FEAST_STORE, MODEL_VERSION
+    global MODEL, FEAST_STORE, MODEL_VERSION, MLFLOW_CLIENT
 
     logger.info("=" * 60)
     logger.info("Starting Stock Prediction API...")
     logger.info("=" * 60)
 
-    # Set MLflow tracking URI
+    # Initialize MLflow client (tracking URI already set at module import)
     try:
-        logger.info("Connecting to MLflow...")
-        tracking_uri = f"file://{MLRUNS_PATH}"
-        mlflow.set_tracking_uri(tracking_uri)
-        client = MlflowClient(tracking_uri=tracking_uri)
+        logger.info("Initializing MLflow client...")
+        MLFLOW_CLIENT = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
     except Exception as e:
-        logger.error(f"Failed to connect to MLflow: {e}")
+        logger.error(f"Failed to initialize MLflow client: {e}")
 
     # Load pyfunc model from Model Registry
     try:
@@ -131,7 +161,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Set MODEL_VERSION from loaded model metadata
     try:
-        MODEL_VERSION = client.get_model_version_by_alias(
+        MODEL_VERSION = MLFLOW_CLIENT.get_model_version_by_alias(
             name=settings.registered_model_name,
             alias=settings.model_alias,
         ).version
@@ -176,7 +206,15 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next: Callable) -> Response:
-    """Log request details and latency for observability."""
+    """Log HTTP request method, path, status code, and latency.
+
+    Args:
+        request: Incoming HTTP request.
+        call_next: Next middleware/handler in chain.
+
+    Returns:
+        Response: HTTP response from downstream handler.
+    """
     start_time = time.time()
 
     response = await call_next(request)
@@ -230,7 +268,7 @@ async def health_check() -> HealthResponse:
 
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(request: StockRequest) -> PredictionResponse:
+async def predict(request: StockRequest, db: Session = Depends(get_db)) -> PredictionResponse:
     """Predict next-day stock price movement direction.
 
     Uses the latest features from Feast online store and the champion
@@ -290,14 +328,7 @@ async def predict(request: StockRequest) -> PredictionResponse:
             status_code=500, detail=f"Feature retrieval failed: {str(e)}"
         )
 
-    # Validate features were returned
-    # Drop symbol, check if remaining features are all NaN
-
-    # feature_cols steps
-    # Step 1: isna Boolean mask (True = NaN, False = value exists)
-    # Step 2: all Check if ALL rows in each column are NaN → Series[bool]
-    # Step 3: all Check if ALL columns are all-NaN → single bool
-
+    # Validate features exist (all-NaN indicates symbol not found or not materialized)
     feature_cols = features_df.drop(columns=["symbol"], errors="ignore")
     if features_df.empty or feature_cols.isna().all().all():
         logger.error(f"No features found for symbol: {request.symbol}")
@@ -319,17 +350,61 @@ async def predict(request: StockRequest) -> PredictionResponse:
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
-    
-    prediction_class = model_prediction_df['prediction_class'].iloc[0]
+
+    prediction_class = model_prediction_df["prediction_class"].iloc[0]
 
     if prediction_class == 1:
         prediction_label = "UP"
         confidence = float(model_prediction_df["prediction_proba_up"].iloc[0])  # P(UP)
     else:
         prediction_label = "DOWN"
-        confidence = float(model_prediction_df["prediction_proba_down"].iloc[0])  # P(DOWN)
+        confidence = float(
+            model_prediction_df["prediction_proba_down"].iloc[0]
+        )  # P(DOWN)
 
-    logger.info(f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})")
+    logger.info(
+        f"Prediction complete: {prediction_label} (confidence: {confidence:.3f})"
+    )
+
+    # --- Persist prediction to database ---
+    try:
+        prediction_date = pd.to_datetime(request.date)
+
+        raw_stock_row = db.query(RawStockData).filter(
+            RawStockData.symbol == request.symbol,
+            RawStockData.date == prediction_date
+        ).first()
+
+        if raw_stock_row is None:
+            logger.warning(
+                f"No RawStockData row for {request.symbol} on {request.date}. "
+                "Prediction will not be persisted."
+            )
+        else:
+            # Convert to dict
+            features_dict = (
+                features_df.drop(columns=["symbol"], errors="ignore")
+                .iloc[0]
+                .to_dict()
+            )
+            # Convert numpy float to native float
+            features_dict = {k: float(v) for k, v in features_dict.items()}
+
+            db.add(PredictionResult(
+                raw_stock_data_id=raw_stock_row.id,
+                predicted_at=datetime.now(UTC),
+                model_name=f"{settings.registered_model_name}@{settings.model_alias}/v{MODEL_VERSION}",
+                prediction=int(prediction_class),
+                probability=confidence,
+                features_used=features_dict
+            ))
+            db.commit()
+            logger.info(f"Prediction persisted for {request.symbol} on {request.date}")
+
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to persist prediction to DB: {e}")
 
     # Parse pyfunc output and return response
     return PredictionResponse(
@@ -339,4 +414,249 @@ async def predict(request: StockRequest) -> PredictionResponse:
         prediction_label=prediction_label,
         probability=confidence,
         model_version=str(MODEL_VERSION),
+    )
+
+
+def _get_champion_run_data() -> dict:
+    """Query MLflow for champion model's training run metrics and diagnostic plots.
+
+    Retrieves performance metrics and diagnostic visualizations (feature importance,
+    confusion matrix, ROC curve) from the MLflow run that produced the current
+    champion model. Artifacts are downloaded and base64-encoded for API transport.
+
+    Returns:
+        dict: Model metadata with structure matching ModelInfoResponse:
+            - model_version: Model registry version number
+            - model_alias: Alias name (e.g., "champion")
+            - run_id: MLflow run ID that created the model
+            - metrics: Test set performance metrics (accuracy, ROC AUC)
+            - diagnostics: Base64-encoded PNG plots (feature_importance,
+                          confusion_matrix, roc_curve)
+
+    Raises:
+        RuntimeError: If MLflow client not initialized.
+        Exception: If model version lookup, run query, or artifact download fails.
+
+    Note:
+        Missing metrics default to None. Missing diagnostic plots are logged
+        and skipped rather than raising errors (older runs may lack some plots).
+    """
+    if MLFLOW_CLIENT is None:
+        raise RuntimeError("MLflow client not initialized")
+
+    # Get champion model version and extract training run ID
+    version_info = MLFLOW_CLIENT.get_model_version_by_alias(
+        name=settings.registered_model_name,
+        alias=settings.model_alias,
+    )
+    run_id = version_info.run_id
+
+    # Fetch training run metrics
+    run = MLFLOW_CLIENT.get_run(run_id=run_id)
+    metrics_dict = run.data.metrics
+
+    # Extract test set metrics (default to None if not logged)
+    metrics = {
+        "test_accuracy": metrics_dict.get("test_accuracy"),
+        "test_roc_auc": metrics_dict.get("test_roc_auc"),
+    }
+
+    # Download diagnostic plot artifacts to temp directory
+    temp_dir = Path(tempfile.mkdtemp(prefix="mlflow_diagnostics_"))
+    try:
+        local_dir = MLFLOW_CLIENT.download_artifacts(
+            run_id=run_id,
+            path="diagnostics",
+            dst_path=str(temp_dir),
+        )
+        diagnostics_dir = Path(local_dir)
+
+        # Base64-encode each diagnostic plot
+        diagnostics = {}
+        plot_files = {
+            "feature_importance": "feature_importance.png",
+            "confusion_matrix": "confusion_matrix.png",
+            "roc_curve": "roc_curve.png",
+        }
+
+        for plot_name, filename in plot_files.items():
+            plot_path = diagnostics_dir / filename
+            if plot_path.exists():
+                with open(plot_path, "rb") as f:
+                    img_bytes = f.read()
+                diagnostics[plot_name] = base64.b64encode(img_bytes).decode("utf-8")
+            else:
+                logger.warning(
+                    f"Diagnostic plot not found (may not exist in run): {filename}"
+                )
+    finally:
+        # Clean up temporary directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return {
+        "model_version": str(version_info.version),
+        "model_alias": settings.model_alias,
+        "run_id": run_id,
+        "metrics": metrics,
+        "diagnostics": diagnostics,
+    }
+
+
+@app.get("/model/info", response_model=ModelInfoResponse)
+async def get_model_info() -> ModelInfoResponse:
+    """Retrieve champion model metadata, performance metrics, and diagnostic plots.
+
+    Queries the MLflow Model Registry for the current champion model's training
+    run information, including test set performance metrics and diagnostic
+    visualizations. Useful for model monitoring dashboards and debugging
+    prediction behavior.
+
+    Returns:
+        ModelInfoResponse: Contains:
+            - model_version: Registry version number of champion model
+            - model_alias: Alias name used to identify champion (e.g., "champion")
+            - run_id: MLflow run ID that produced the model
+            - metrics: Test performance metrics (accuracy, ROC AUC, etc.)
+            - diagnostics: Base64-encoded PNG images of diagnostic plots:
+                * feature_importance: Top features by model weight
+                * confusion_matrix: Classification error breakdown
+                * roc_curve: True positive vs false positive rate
+
+    Raises:
+        HTTPException 503: MLflow client not available (startup failure).
+        HTTPException 500: Model info query or artifact download failed.
+
+    Example:
+        GET /model/info
+        Response: {
+            "model_version": "3",
+            "model_alias": "champion",
+            "run_id": "abc123...",
+            "metrics": {"test_accuracy": 0.87, "test_roc_auc": 0.92},
+            "diagnostics": {"feature_importance": "iVBORw0KGgo...", ...}
+        }
+    """
+    try:
+        data = _get_champion_run_data()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to retrieve model info: {e}")
+        raise HTTPException(status_code=500, detail=f"Model info retrieval failed: {e}")
+
+    return ModelInfoResponse(**data)
+
+
+@app.get("/stock/history", response_model=HistoricalDataResponse)
+async def get_stock_history(
+    symbol: str = Query(..., description="Stock ticker symbol"),
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+) -> HistoricalDataResponse:
+    """Retrieve daily close prices with actual vs predicted direction."""
+    
+    # 1. Validate symbol
+    valid_symbols = settings.valid_symbols
+    if symbol.upper() not in valid_symbols:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"{symbol} is not a valid symbol!"
+        )
+
+    # 2. Parse and validate dates
+    try:
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid date format: {str(e)}"
+        )
+    
+    if end_dt < start_dt:
+        raise HTTPException(
+            status_code=400,
+            detail="end_date must be after start_date"
+        )
+
+    # 3. Query records in date range
+    records = (
+        db.query(RawStockData)
+        .filter(
+            RawStockData.symbol == symbol.upper(),
+            RawStockData.date >= start_dt,
+            RawStockData.date <= end_dt,
+        )
+        .order_by(RawStockData.date.asc())
+        .limit(365)  # Cap response size
+        .all()
+    )
+
+    if not records:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for {symbol} between {start_date} and {end_date}",
+        )
+
+    # 4. Get previous day for direction computation
+    previous_day = (
+        db.query(RawStockData)
+        .filter(
+            RawStockData.symbol == symbol.upper(),
+            RawStockData.date < start_dt
+        )
+        .order_by(RawStockData.date.desc())
+        .first()
+    )
+
+    # 5. Build daily records
+    daily_records = []
+    prev_close = previous_day.close if previous_day else None
+
+    for record in records:
+        current_close = record.close
+        
+        # Compute actual direction
+        if prev_close is not None:
+            actual_direction = "UP" if current_close > prev_close else "DOWN"
+        else:
+            actual_direction = None
+        
+        # Get prediction if exists
+        predicted_direction = None
+        probability = None
+        if record.predictions:
+            latest_pred = max(
+                record.predictions, 
+                key=lambda p: p.predicted_at
+            )
+            predicted_direction = "UP" if latest_pred.prediction == 1 else "DOWN"
+            probability = latest_pred.probability
+        
+        # Compute correctness
+        correct = None
+        if actual_direction and predicted_direction:
+            correct = (actual_direction == predicted_direction)
+        
+        daily_records.append(
+            DailyRecord(
+                date=record.date.strftime("%Y-%m-%d"),
+                close=current_close,
+                actual_direction=actual_direction,
+                predicted_direction=predicted_direction,
+                probability=probability,
+                correct=correct,
+            )
+        )
+        
+        prev_close = current_close
+
+    # 6. Return response
+    return HistoricalDataResponse(
+        symbol=symbol.upper(),
+        start_date=start_date,
+        end_date=end_date,
+        total_records=len(daily_records),
+        records=daily_records,
     )

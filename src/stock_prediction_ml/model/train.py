@@ -826,11 +826,9 @@ def promote_model_with_alias(
     CHAMPION_THRESHOLD = {"auc": 0.70, "accuracy": 0.65}
     CHALLENGER_THRESHOLD = {"auc": 0.65, "accuracy": 0.60}
 
-    # TODO: Step 1 - Extract metrics from test_metrics dict
     test_accuracy = test_metrics.get("test_accuracy", 0)
     test_auc_roc = test_metrics.get("test_roc_auc", 0)
 
-    # TODO: Step 2 - Determine which alias (if any) based on thresholds
     alias = None
     meets_champion = (
         test_accuracy >= CHAMPION_THRESHOLD["accuracy"]
@@ -845,19 +843,15 @@ def promote_model_with_alias(
     elif meets_challenger:
         alias = "challenger"
 
-    # TODO: Step 3 - If alias is None, log warning and return None
     if not alias:
         logger.warning("Metrics below thresholds - no alias assigned")
         return None
 
-    # TODO: Step 4 - Set the alias on the model version
     client.set_registered_model_alias(name=model_name, alias=alias, version=version)
 
-    # TODO: Step 5 - Add description with metrics to the model version
     description = f"Accuracy: {test_accuracy}; AUC ROC: {test_auc_roc}"
     client.update_model_version(name=model_name, version=str(version), description=description)
 
-    # TODO: Step 6 - Log success message and return the alias
     logger.info(f"Set alias '{alias}' on version {version}")
     return alias
 

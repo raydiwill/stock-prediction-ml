@@ -11,12 +11,12 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **Model training**: CatBoost classifier with time-series split, one-hot encoding, early stopping
 - ✅ **Experiment tracking**: MLflow integration for metrics, artifacts, and model versioning
 - ✅ **Model Registry**: MLflow pyfunc wrapper bundling model + encoder + features with alias-based promotion
-- ✅ **Testing suite**: Pytest with synthetic fixtures for CI/CD (14+ test modules including API tests)
+- ✅ **Testing suite**: Pytest with synthetic fixtures for CI/CD (9 test modules, 80+ tests including API, DB, and UI)
 - ✅ **Feature store**: Feast feature definitions, materialization pipeline, online store (SQLite) with 203+ feature records
-- ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, request logging middleware
+- ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, prediction persistence, request logging middleware
+- ✅ **UI**: Streamlit dashboard with 3 pages (Live Prediction, Historical Data, About Model), Plotly charts, and API health monitoring
 - ❌ **Orchestration**: Airflow DAGs not implemented
 - ❌ **Monitoring**: Grafana/Prometheus stack not implemented
-- ❌ **UI**: Streamlit demo not implemented
 
 ## Primary stack
 **Core**: Python 3.13, pandas, numpy, scikit-learn, CatBoost, XGBoost, LightGBM, RandomForest
@@ -25,12 +25,14 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 **Database**: SQLAlchemy ORM with SQLite (dev), support for PostgreSQL
 
-**API**: FastAPI (skeleton), Pydantic (schema validation)
+**API**: FastAPI, Pydantic (schema validation), httpx (inter-service communication)
 
-**Planned**: Docker, Airflow, Grafana, Streamlit
+**UI**: Streamlit (dashboard), Plotly (interactive charts)
+
+**Planned**: Docker, Airflow, Grafana
 
 ## Current status
-### ✅ Completed (95%)
+### ✅ Completed
 1. **Data ingestion** ([`src/stock_prediction_ml/marketstack/pull.py`](src/stock_prediction_ml/marketstack/pull.py))
    - Fetch EOD data from MarketStack API with pagination
    - Save to parquet format in `data/raw/`
@@ -56,8 +58,9 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 4. **Database models** ([`src/stock_prediction_ml/db/models.py`](src/stock_prediction_ml/db/models.py))
    - `RawStockData`: stores ingested stock data with hash-based deduplication
-   - `PredictionResult`: stores model predictions with metadata
-   - `ModelMetadata`: tracks MLflow runs, versions, metrics, and active models
+   - `PredictionResult`: stores model predictions with features_used (JSON), linked to RawStockData via foreign key
+   - Bidirectional relationship (`RawStockData.predictions` ↔ `PredictionResult.raw_data`)
+   - Session management ([`src/stock_prediction_ml/db/session.py`](src/stock_prediction_ml/db/session.py)) with `get_db()` dependency for FastAPI
    - Ingestion pipeline ([`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py)) with adaptive batching
 
 5. **Model training** ([`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py))
@@ -113,15 +116,19 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 8. **Testing** ([`tests/`](tests/))
    - Synthetic fixtures for hermetic CI tests
-   - Pytest markers: `@pytest.mark.slow` for integration tests.
-   - Test coverage:
+   - Pytest markers: `@pytest.mark.slow` for integration tests
+   - Pytest config in `pyproject.toml` (`pythonpath`, `filterwarnings`, `markers`)
+   - Shared [`conftest.py`](tests/conftest.py): Mocks Streamlit module before imports to prevent server initialization
+   - Test coverage (9 modules, 80+ tests):
      - Data pull and processing ([`test_pull.py`](tests/test_pull.py))
      - Data validation expectations ([`test_validation.py`](tests/test_validation.py))
      - Feature engineering ([`test_build_features.py`](tests/test_build_features.py))
      - Database ingestion ([`test_ingest.py`](tests/test_ingest.py))
+     - Database CRUD and relationships ([`test_db.py`](tests/test_db.py)) - 8 tests: table creation, insert/query/update/delete, FK relationships, hash deduplication, session management
      - Training pipeline ([`test_train.py`](tests/test_train.py)) - 26 tests including Feast data loading
      - Feast feature store ([`test_feast.py`](tests/test_feast.py)) - Entity/view schemas, materialization, retrieval
      - REST API endpoints ([`test_api.py`](tests/test_api.py)) - 8 tests with mocked MLflow/Feast dependencies
+     - UI logic and API client ([`test_ui.py`](tests/test_ui.py)) - 30+ tests: utils (symbols, trading day, formatting), historical helpers (streak, precision), Plotly chart traces, httpx-mocked API client (health, predict, history, model info)
 
 9. **Feature Store** ([`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/))
    - **Infrastructure**:
@@ -148,33 +155,73 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Online store ready for real-time feature retrieval in API endpoints
 
 10. **REST API** ([`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py))
-   - **Lifecycle Management** (`lifespan` function):
-     - Startup: Loads champion model from MLflow Registry (`models:/stock_prediction_classifier@champion`)
-     - Startup: Initializes Feast FeatureStore with registry cache pre-warming
-     - Startup: Validates critical dependencies (fail-fast on missing deps via `validate_startup()`)
-     - Shutdown: Clean exit logging
-   - **Endpoints**:
-     - `GET /health`: Returns model/Feast availability status and model version
-     - `POST /predict`: Retrieves features from Feast online store → model prediction with confidence scores
-   - **Implementation Details**:
-     - Model loaded via `mlflow.pyfunc.load_model()` with alias-based lookup
-     - Feature retrieval via `FEAST_STORE.get_online_features(features=feature_service)`
-     - Type casting for SQLite int64 → int32 compatibility (model signature requirement)
-     - Pyfunc handles symbol encoding internally (no manual encoder needed)
-     - Feature validation: Returns 404 if Feast returns empty/null features
-   - **Middleware**:
-     - CORS enabled for all origins
-     - Request logging middleware tracking method, path, status, and latency
-   - **Configuration** ([`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py)):
-     - Centralized settings for model name, alias, Feast service, int columns
-     - All hardcoded constants migrated to `settings` object
-   - Schema definitions ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py))
+    - **Lifecycle Management** (`lifespan` function):
+      - Startup: Loads champion model from MLflow Registry (`models:/stock_prediction_classifier@champion`)
+      - Startup: Initializes Feast FeatureStore with registry cache pre-warming
+      - Startup: Validates critical dependencies (fail-fast on missing deps via `validate_startup()`)
+      - Shutdown: Clean exit logging
+    - **Endpoints**:
+      - `GET /health`: Returns model/Feast availability status and model version
+      - `POST /predict`: Retrieves features from Feast online store → model prediction with confidence scores → persists result to `PredictionResult` table with features_used JSON
+      - `GET /model/info`: Returns champion model metrics (accuracy, ROC AUC) and base64-encoded diagnostic plots (feature importance, confusion matrix, ROC curve) from MLflow artifacts
+      - `GET /stock/history`: Returns daily close prices with actual vs predicted direction and correctness for a given symbol and date range (capped at 365 records)
+    - **Implementation Details**:
+      - Model loaded via `mlflow.pyfunc.load_model()` with alias-based lookup
+      - Feature retrieval via `FEAST_STORE.get_online_features(features=feature_service)`
+      - Type casting for SQLite int64 → int32 compatibility (model signature requirement)
+      - Pyfunc handles symbol encoding internally (no manual encoder needed)
+      - Feature validation: Returns 404 if Feast returns empty/null features
+      - Prediction persistence: Saves to DB with features_used, model name/version, probability
+      - Historical data: Queries `RawStockData` with linked predictions, computes actual direction from consecutive closes
+      - Model info: Downloads MLflow artifacts to temp dir, base64-encodes diagnostic PNGs, cleans up
+    - **Middleware**:
+      - CORS enabled for configurable origins (default: all)
+      - Request logging middleware tracking method, path, status, and latency
+    - **Configuration** ([`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py)):
+      - Centralized settings for model name, alias, Feast service, int columns
+      - `valid_symbols`: Allowed stock tickers for request validation
+      - `cors_origins`: Configurable CORS with `split_cors_origins_to_list` property
+      - All hardcoded constants migrated to `settings` object
+    - **Schema definitions** ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py)):
+      - `StockRequest` / `PredictionResponse`: Predict endpoint models
+      - `HealthResponse`: Health check status
+      - `ModelInfoResponse`: Champion model metrics + base64 diagnostics dict
+      - `DailyRecord` / `HistoricalDataResponse`: Historical data with direction and correctness
 
-### ❌ Not Started (5%)
+11. **Streamlit UI** ([`src/stock_prediction_ml/ui/`](src/stock_prediction_ml/ui/))
+    - **Architecture**: Multi-page app with session-state routing and custom CSS navigation
+    - **File Structure**:
+      ```
+      src/stock_prediction_ml/ui/
+      ├── app.py                    # Entry point, navigation, custom CSS, welcome page
+      ├── utils.py                  # Symbol validation, trading day calc, result formatting
+      ├── components/
+      │   ├── api_client.py         # httpx wrapper for FastAPI (health, predict, history, model info)
+      │   └── plot.py               # Plotly price chart with prediction overlays
+      └── pages/
+          ├── prediction.py         # Live prediction: API health bar, symbol selector, colored results
+          ├── historical.py         # Historical data: date presets, 6-metric dashboard, styled table
+          └── about_model.py        # Model info: metrics dashboard, tabbed diagnostic plots
+      ```
+    - **Pages**:
+      - **Welcome** (default): Hero section with at-a-glance metrics (model type, feature count, tracking tool)
+      - **Live Prediction**: API health status bar → symbol dropdown + next trading day → predict button → colored direction (UP/DOWN with emoji) + confidence
+      - **Historical Data**: Date presets (7/30/90d, 1yr) → Plotly price chart with correct/incorrect markers → 6-metric dashboard (total records, predicted count, accuracy, UP/DOWN precision, streak) → color-coded results table
+      - **About Model**: Performance metrics (accuracy, ROC AUC) → tabbed diagnostic plots (feature importance, confusion matrix, ROC curve) decoded from base64 PNGs
+    - **API Client** ([`components/api_client.py`](src/stock_prediction_ml/ui/components/api_client.py)):
+      - `health_check()`: GET `/health` with 5s timeout, cached 120s
+      - `predict()`: POST `/predict`, no caching (always fresh)
+      - `get_historical_data()`: GET `/stock/history`, cached 300s
+      - `get_model_info()`: GET `/model/info`, cached 300s
+      - All functions return `None` on error with logging (graceful degradation)
+    - **Run commands**:
+      - `./run_ui.sh` (uses `uv run streamlit run` with file watching)
+      - `streamlit run src/stock_prediction_ml/ui/app.py`
+
+### ❌ Not Started
 1. **Orchestration**: Airflow DAGs for automated pipeline execution
 2. **Monitoring**: Grafana dashboards for drift detection and performance tracking
 3. **Deployment**: Docker containerization, model serving infrastructure
-4. **UI**: Streamlit dashboard for visualization and inference
 
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
@@ -190,15 +237,28 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`src/stock_prediction_ml/data_validation/validation.py`](src/stock_prediction_ml/data_validation/validation.py): Great Expectations validation suite
 - [`src/stock_prediction_ml/features/build_features.py`](src/stock_prediction_ml/features/build_features.py): Feature engineering pipeline
 - [`src/stock_prediction_ml/model/train.py`](src/stock_prediction_ml/model/train.py): Training + Model Registry with pyfunc bundling
+- [`src/stock_prediction_ml/db/models.py`](src/stock_prediction_ml/db/models.py): SQLAlchemy models (RawStockData, PredictionResult)
+- [`src/stock_prediction_ml/db/session.py`](src/stock_prediction_ml/db/session.py): Database session management and `get_db()` dependency
 - [`src/stock_prediction_ml/db/ingest.py`](src/stock_prediction_ml/db/ingest.py): Database ingestion with deduplication
 - [`src/stock_prediction_ml/feast_repo/`](src/stock_prediction_ml/feast_repo/): Feature store infrastructure (Feast SDK)
-- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): FastAPI application (in progress)
+- [`src/stock_prediction_ml/api/main.py`](src/stock_prediction_ml/api/main.py): FastAPI application with MLflow + Feast + DB integration
+- [`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py): Pydantic request/response models
+- [`src/stock_prediction_ml/ui/`](src/stock_prediction_ml/ui/): Streamlit dashboard (app.py, pages, components, utils)
 
 ### Configuration
 - [`configs/training/local.yaml`](configs/training/local.yaml): Training configuration (paths, hyperparameters, Feast service, MLflow settings)
 - [`src/stock_prediction_ml/feast_repo/feature_store.yaml`](src/stock_prediction_ml/feast_repo/feature_store.yaml): Feast feature store configuration (offline/online stores, registry)
+- [`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py): Centralized settings (model, API, Feast, CORS, valid symbols)
 - [`config.env`](config.env): Environment variables (API keys, DB URL, MLflow URI)
 - [`pyproject.toml`](pyproject.toml): Project dependencies and metadata
+
+### Testing
+- [`tests/conftest.py`](tests/conftest.py): Shared fixtures and Streamlit mock injection
+- [`tests/test_db.py`](tests/test_db.py): Database CRUD and relationship tests
+- [`tests/test_ui.py`](tests/test_ui.py): UI logic, API client, and chart builder tests
+
+### Scripts
+- [`run_ui.sh`](run_ui.sh): Launch Streamlit with file watching via `uv run`
 
 ### Notebooks
 - [`notebooks/05_baseline.ipynb`](notebooks/05_baseline.ipynb): Feature selection with permutation importance
@@ -293,6 +353,28 @@ Feature vector (34 features after encoding `symbol`):
 - `test_invalid_symbol_returns_422`: Request validation for invalid symbols
 - `test_weekend_date_returns_422`: Request validation for weekend dates
 
+✅ **Database CRUD**:
+- `test_tables_exist`: Both tables created in schema
+- `test_able_to_insert_stock_data_into_db`: Insert and auto-increment ID
+- `test_stock_data_can_be_queried`: Query by symbol filter
+- `test_update_stock_data_with_new_value`: Update close price and validated flag
+- `test_able_to_delete_stock_data_from_db`: Delete and verify removal
+- `test_relationship_between_tables`: FK link between RawStockData and PredictionResult
+- `test_duplicate_hash_not_allowed`: IntegrityError on duplicate hash_input
+- `test_get_db_yields_session`: Session factory produces working session
+
+✅ **UI Logic & API Client**:
+- `TestGetValidSymbols`: Returns list of string symbols from settings
+- `TestGetNextTradingDay`: Weekday/weekend logic (Friday→Monday, Sat→Monday, Sun→Monday)
+- `TestFormatPredictionResult`: UP/DOWN with correct color, emoji, percentage formatting
+- `TestComputeStreak`: Consecutive correct/incorrect streak from historical records
+- `TestDirectionPrecision`: Per-direction accuracy calculation (UP precision, DOWN precision)
+- `TestBuildPriceChart`: Plotly figure with Close Price, Correct, and Incorrect traces
+- `TestHealthCheck`: Mocked httpx GET with success and error scenarios
+- `TestPredict`: Mocked httpx POST with prediction response parsing
+- `TestGetHistoricalData`: Mocked httpx GET with query parameter validation
+- `TestGetModelInfo`: Mocked model metadata retrieval
+
 ## Notes / decisions
 ### Architecture
 - **Temporal splits over random splits**: Date quantiles (90/5/5) prevent leakage in time-series data
@@ -329,6 +411,20 @@ Feature vector (34 features after encoding `symbol`):
 - **Synthetic fixtures**: Generate minimal parquet/JSON in `tmp_path` (no large files in repo)
 - **Hermetic tests**: Zero external dependencies (no API calls, no database writes in CI)
 - **Deterministic**: Fixed random seeds ensure reproducible test outcomes
+- **Streamlit isolation**: `conftest.py` mocks Streamlit module before imports to prevent server/browser initialization
+- **UI test philosophy**: Pure logic tested (utils, helpers, API client); Streamlit rendering skipped (low ROI due to side effects)
+
+### UI architecture
+- **Session-state routing**: `current_page` in `st.session_state` with `PAGE_REGISTRY` dict mapping keys to render functions
+- **Component separation**: Reusable API client, Plotly chart builders, utility functions
+- **Caching strategy**: Health checks cached 120s, model/historical data cached 300s, predictions always fresh
+- **Error resilience**: All API calls return `None` on failure; pages handle gracefully with inline messages
+- **Custom CSS**: Hides default Streamlit multi-page nav, adds green hover glow on sidebar buttons
+
+### API persistence
+- **Prediction audit trail**: Every `/predict` call persists to `PredictionResult` with features_used JSON, model version, and probability
+- **Historical correctness**: `/stock/history` computes actual direction from consecutive closes, matches with stored predictions
+- **Graceful persistence**: DB write failures are logged but don't block the prediction response
 
 ### Future tech debt
 - **API integration tests**: Add `@pytest.mark.integration` tests with real Feast online store (not mocked)
@@ -344,7 +440,7 @@ Feature vector (34 features after encoding `symbol`):
 ## Coding Instructions for Future Development
 
 ### Role Definition
-You will act as my **coding companion** throughout this project. We will code alongside each other with the primary goal of completing the remaining deliverables (REST API integration, orchestration, monitoring, UI) while prioritizing **learning over speed**.
+You will act as my **coding companion** throughout this project. We will code alongside each other with the primary goal of completing the remaining deliverables (orchestration, monitoring, deployment) while prioritizing **learning over speed**.
 
 ### Workflow (5-Step Process)
 
