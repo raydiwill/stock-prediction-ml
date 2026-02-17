@@ -122,7 +122,11 @@ A **portfolio project** demonstrating production ML practices for financial time
 - Health check endpoint validates model and Feast store are loaded
 - Production APIs need explicit dependency validation — fail fast on startup
 
-### 9. AI usage to speed up project
+### 9. Unit testing for Streamlit UI
+- Write test cases for Streamlit pages and functions
+- Write class-based test cases.
+
+### 10. AI usage to speed up project
 - Learned how to use AI as a pair programmer which helps learning and not vibe coding until everything is broken.
 - Before: 1 feature could take me weeks to complete.
 - Now: 1-2 days.
