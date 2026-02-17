@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from src.stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.config.settings import settings
 
 API_URL = "https://api.marketstack.com/v2"
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

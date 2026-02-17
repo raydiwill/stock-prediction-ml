@@ -1,7 +1,7 @@
 import logging
 
-from src.stock_prediction_ml.db.models import Base
-from src.stock_prediction_ml.db.session import engine
+from stock_prediction_ml.db.models import Base
+from stock_prediction_ml.db.session import engine
 
 # Configure enhanced logging with timestamps and better formatting
 logging.basicConfig(
