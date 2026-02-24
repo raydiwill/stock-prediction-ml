@@ -435,6 +435,29 @@ Feature vector (34 features after encoding `symbol`):
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
 - **Containerization**: Docker Compose for local dev and production deployment
 
+### Future improvements (post-production)
+Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker/K8s) is stable.
+
+#### dbt (data build tool) — Data preparation layer
+- **Scope**: Replace the raw-to-validated transformation layer (Great Expectations + `db/ingest.py`), NOT feature engineering
+- **Recommended adapter**: `dbt-duckdb` — DuckDB queries Parquet natively, no server needed, aligns with existing Feast offline store
+- **What dbt replaces**:
+  - `combine_and_save_to_parquet()` → staging model using `read_parquet()`
+  - Great Expectations validation → dbt tests (`not_null`, `unique`, `accepted_values`, custom tests like `high > low`)
+  - `db/ingest.py` SHA256 dedup → incremental model with `unique_key=['symbol', 'date']`
+- **What stays in Python**: All feature engineering (`build_features.py`) — RSI, MACD, EMA, rolling windows are awkward in SQL and lose the pandas/numpy integration
+- **Pipeline with dbt**: `pull.py → raw Parquets → dbt (clean & validate) → clean table/Parquet → build_features.py → Feast → Model`
+- **Airflow integration**: `BashOperator` with `dbt run` or `cosmos` library for dbt-in-Airflow
+- **When to add**: Most valuable when adding more data sources (sentiment, fundamentals) where join/clean logic gets complex
+
+#### Polars — Performance upgrade for feature engineering
+- **Scope**: Replace pandas in `build_features.py` for faster feature computation
+- **Benefit**: Lazy evaluation, multi-threaded, lower memory usage on larger datasets
+
+#### Slack integration — Pipeline notifications
+- **Scope**: Alert on pipeline failures, model promotion events, drift detection
+- **Integration point**: Airflow callbacks, Grafana alerting, or custom hooks
+
 ---
 
 ## Coding Instructions for Future Development
