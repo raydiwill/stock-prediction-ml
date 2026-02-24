@@ -56,7 +56,6 @@ def load_promotion_config(config_path: str | Path | None) -> dict:
         - Look for a 'promotion' key
         - Fall back to DEFAULT_THRESHOLDS if missing
     """
-    # TODO: implement
     if config_path is None:
         config_path = PROJECT_ROOT / "config" / "train" / "local.yaml"
     else:
@@ -67,7 +66,16 @@ def load_promotion_config(config_path: str | Path | None) -> dict:
         config = yaml.safe_load(f)
 
     logger.info(f"Config loaded successfully with {len(config)} keys")
-    return config
+
+    promote_dict = {}
+    promote_dict["champion"] = config.get("champion")
+    promote_dict["challenger"] = config.get("challenger")
+
+    if promote_dict:
+        return promote_dict
+    else:
+        return DEFAULT_THRESHOLDS
+    
 
 
 def get_latest_version_from_experiment(
@@ -233,8 +241,8 @@ def main() -> None:
     #    - Evaluate via evaluate_promotion()
     #    - If alias determined, call promote()
     #    - If no alias, log warning and exit
-    config = load_promotion_config(args.config)
-    
+    promote_dict = load_promotion_config(args.config)
+
 
 
 if __name__ == "__main__":
