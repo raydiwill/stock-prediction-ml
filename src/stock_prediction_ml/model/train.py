@@ -10,11 +10,10 @@ Pipeline Steps:
     4. Train CatBoost with early stopping
     5. Evaluate on validation and test sets
     6. Log metrics, artifacts, and model to MLflow
-    7. Register model and assign alias based on performance
+    7. Register model in MLflow Model Registry
 
 Key Components:
     - StockPredictionModel: MLflow pyfunc wrapper bundling model + encoder
-    - promote_model_with_alias: Automated model promotion based on thresholds
     - save_model_artifacts_locally: Prepare artifacts for pyfunc logging
 
 Usage:
@@ -46,7 +45,6 @@ import yaml
 from catboost import CatBoostClassifier
 from feast import FeatureStore
 from mlflow.models import infer_signature
-from mlflow.tracking import MlflowClient
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
@@ -783,79 +781,6 @@ def save_model_artifacts_locally(
     }
 
 
-def promote_model_with_alias(
-    model_name: str,
-    version: int,
-    test_metrics: dict[str, float],
-) -> str | None:
-    """
-    Assign alias to a registered model version based on performance metrics.
-
-    This function is called AFTER log_model() with registered_model_name parameter,
-    which already creates the model version. This function only handles alias assignment.
-
-    Args:
-        model_name: Name of the registered model (e.g., "stock_prediction_classifier")
-        version: Version number to potentially promote (from log_model return value)
-        test_metrics: Evaluation metrics for promotion decision
-            Expected keys: "test_accuracy", "test_roc_auc"
-
-    Returns:
-        str | None: The alias assigned ("champion", "challenger") or None if below thresholds
-
-    Promotion thresholds:
-        - "champion": AUC >= 0.60 AND Accuracy >= 0.55
-        - "challenger": AUC >= 0.55 AND Accuracy >= 0.52
-        - None: Below thresholds
-
-    Loading models by alias:
-        - Champion: mlflow.pyfunc.load_model("models:/{model_name}@champion")
-        - Challenger: mlflow.pyfunc.load_model("models:/{model_name}@challenger")
-
-    Example:
-        >>> alias = promote_model_with_alias(
-        ...     model_name="stock_prediction_classifier",
-        ...     version=3,
-        ...     test_metrics={"test_accuracy": 0.58, "test_roc_auc": 0.62},
-        ... )
-        >>> print(f"Assigned alias: {alias}")  # "champion"
-    """
-    client = MlflowClient()
-
-    # Define promotion thresholds
-    CHAMPION_THRESHOLD = {"auc": 0.70, "accuracy": 0.65}
-    CHALLENGER_THRESHOLD = {"auc": 0.65, "accuracy": 0.60}
-
-    test_accuracy = test_metrics.get("test_accuracy", 0)
-    test_auc_roc = test_metrics.get("test_roc_auc", 0)
-
-    alias = None
-    meets_champion = (
-        test_accuracy >= CHAMPION_THRESHOLD["accuracy"]
-        and test_auc_roc >= CHAMPION_THRESHOLD["auc"]
-    )
-    meets_challenger = (
-        test_accuracy >= CHALLENGER_THRESHOLD["accuracy"]
-        and test_auc_roc >= CHALLENGER_THRESHOLD["auc"]
-    )
-    if meets_champion:
-        alias = "champion"
-    elif meets_challenger:
-        alias = "challenger"
-
-    if not alias:
-        logger.warning("Metrics below thresholds - no alias assigned")
-        return None
-
-    client.set_registered_model_alias(name=model_name, alias=alias, version=version)
-
-    description = f"Accuracy: {test_accuracy}; AUC ROC: {test_auc_roc}"
-    client.update_model_version(name=model_name, version=str(version), description=description)
-
-    logger.info(f"Set alias '{alias}' on version {version}")
-    return alias
-
-
 def main(config_path: str | Path | None = None):
     """End-to-end training pipeline with MLflow logging.
 
@@ -1002,19 +927,11 @@ def main(config_path: str | Path | None = None):
         log_section("Training complete")
         logger.info(f"View results: mlflow ui --backend-store-uri {tracking_uri}")
 
-    # Promote model with alias based on metrics
-    log_section("Promoting model")
-    alias = promote_model_with_alias(
-        model_name=model_name,
-        version=int(model_version),
-        test_metrics=test_metrics,
+    # Log promote hint
+    logger.info(
+        f"To promote: python -m stock_prediction_ml.model.promote "
+        f"--version {model_version} --config configs/training/local.yaml"
     )
-
-    # Log helpful message for how to load the model:
-    if alias:
-        logger.info(f"Load with: mlflow.pyfunc.load_model('models:/{model_name}@{alias}')")
-    else:
-        logger.info(f"Load with: mlflow.pyfunc.load_model('models:/{model_name}/{model_version}')")
 
     # Clean up resources
     log_section("Clean up")
