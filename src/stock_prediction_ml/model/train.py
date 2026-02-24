@@ -45,7 +45,6 @@ import yaml
 from catboost import CatBoostClassifier
 from feast import FeatureStore
 from mlflow.models import infer_signature
-from mlflow.tracking import MlflowClient
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
