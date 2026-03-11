@@ -74,7 +74,7 @@ def export_validated_data(
         {column: getattr(row, column) for column in EXPORT_COLUMNS} for row in results
     ]
 
-    df = pd.DataFrame.from_dict(rows)
+    df = pd.DataFrame.from_dict(rows) if rows else pd.DataFrame(columns=EXPORT_COLUMNS)
     df = df.sort_values(by=["symbol", "date"]).reset_index(drop=True)
 
     logger.info(f"Date exported: from {start_date} until {end_date}")
