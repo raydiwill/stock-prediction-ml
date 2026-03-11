@@ -14,8 +14,8 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import select
 
-from stock_prediction_ml.db.session import SessionLocal
 from stock_prediction_ml.db.models import RawStockData
+from stock_prediction_ml.db.session import SessionLocal
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
