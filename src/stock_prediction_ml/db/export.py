@@ -117,7 +117,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Resolve defaults once, keep everything as strings
-    start_date = args.start_date or (datetime.today() - timedelta(days=90)).strftime(
+    start_date = args.start_date or (datetime.today() - timedelta(days=180)).strftime(
         "%Y-%m-%d"
     )
     end_date = args.end_date or (datetime.today() - timedelta(days=1)).strftime(
