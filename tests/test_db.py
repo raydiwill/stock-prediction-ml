@@ -32,7 +32,7 @@ def test_db():
     TestSession = sessionmaker(bind=engine)
     session = TestSession()
 
-    yield session 
+    yield session
 
     # Cleanup after test
     session.close()
@@ -155,7 +155,7 @@ def test_relationship_between_tables(test_db, sample_stock):
     test_db.commit()
 
     # Check we can access prediction from stock data
-    test_db.refresh(sample_stock)  
+    test_db.refresh(sample_stock)
     assert len(sample_stock.predictions) == 1
     assert sample_stock.predictions[0].model_name == "catboost_v1"
 
@@ -177,7 +177,7 @@ def test_duplicate_hash_not_allowed(test_db, sample_stock):
         volume=500000.0,
         adj_close=201.0,
         source="marketstack",
-        hash_input="test123", 
+        hash_input="test123",
         pulled_at=datetime.now(),
         parquet_path="/data/test2.parquet",
     )
@@ -218,34 +218,79 @@ def seeded_db(test_db):
     """Seed the test DB with a mix of validated/unvalidated rows across dates."""
     rows = [
         RawStockData(
-            symbol="AAPL", date=datetime(2024, 1, 5), open=150.0, high=152.0,
-            low=149.0, close=151.0, volume=1_000_000.0, adj_close=151.0,
-            source="test", hash_input="hash_1", pulled_at=datetime.now(),
-            parquet_path="/tmp/test.parquet", validated=True,
+            symbol="AAPL",
+            date=datetime(2024, 1, 5),
+            open=150.0,
+            high=152.0,
+            low=149.0,
+            close=151.0,
+            volume=1_000_000.0,
+            adj_close=151.0,
+            source="test",
+            hash_input="hash_1",
+            pulled_at=datetime.now(),
+            parquet_path="/tmp/test.parquet",
+            validated=True,
         ),
         RawStockData(
-            symbol="AAPL", date=datetime(2024, 2, 10), open=155.0, high=157.0,
-            low=154.0, close=156.0, volume=1_200_000.0, adj_close=156.0,
-            source="test", hash_input="hash_2", pulled_at=datetime.now(),
-            parquet_path="/tmp/test.parquet", validated=True,
+            symbol="AAPL",
+            date=datetime(2024, 2, 10),
+            open=155.0,
+            high=157.0,
+            low=154.0,
+            close=156.0,
+            volume=1_200_000.0,
+            adj_close=156.0,
+            source="test",
+            hash_input="hash_2",
+            pulled_at=datetime.now(),
+            parquet_path="/tmp/test.parquet",
+            validated=True,
         ),
         RawStockData(
-            symbol="MSFT", date=datetime(2024, 1, 15), open=300.0, high=305.0,
-            low=298.0, close=303.0, volume=800_000.0, adj_close=303.0,
-            source="test", hash_input="hash_3", pulled_at=datetime.now(),
-            parquet_path="/tmp/test.parquet", validated=True,
+            symbol="MSFT",
+            date=datetime(2024, 1, 15),
+            open=300.0,
+            high=305.0,
+            low=298.0,
+            close=303.0,
+            volume=800_000.0,
+            adj_close=303.0,
+            source="test",
+            hash_input="hash_3",
+            pulled_at=datetime.now(),
+            parquet_path="/tmp/test.parquet",
+            validated=True,
         ),
         RawStockData(
-            symbol="MSFT", date=datetime(2024, 3, 1), open=310.0, high=315.0,
-            low=308.0, close=312.0, volume=900_000.0, adj_close=312.0,
-            source="test", hash_input="hash_4", pulled_at=datetime.now(),
-            parquet_path="/tmp/test.parquet", validated=False,
+            symbol="MSFT",
+            date=datetime(2024, 3, 1),
+            open=310.0,
+            high=315.0,
+            low=308.0,
+            close=312.0,
+            volume=900_000.0,
+            adj_close=312.0,
+            source="test",
+            hash_input="hash_4",
+            pulled_at=datetime.now(),
+            parquet_path="/tmp/test.parquet",
+            validated=False,
         ),
         RawStockData(
-            symbol="AAPL", date=datetime(2024, 4, 20), open=160.0, high=162.0,
-            low=159.0, close=161.0, volume=1_100_000.0, adj_close=161.0,
-            source="test", hash_input="hash_5", pulled_at=datetime.now(),
-            parquet_path="/tmp/test.parquet", validated=False,
+            symbol="AAPL",
+            date=datetime(2024, 4, 20),
+            open=160.0,
+            high=162.0,
+            low=159.0,
+            close=161.0,
+            volume=1_100_000.0,
+            adj_close=161.0,
+            source="test",
+            hash_input="hash_5",
+            pulled_at=datetime.now(),
+            parquet_path="/tmp/test.parquet",
+            validated=False,
         ),
     ]
     test_db.add_all(rows)
@@ -326,7 +371,9 @@ def test_save_to_parquet_default_path(mocker, sample_df, tmp_path):
     mocker.patch("stock_prediction_ml.db.export.PROJECT_ROOT", tmp_path)
     save_to_parquet(sample_df, "2024-01-01", "2024-01-02")
 
-    file_path = tmp_path / "data" / "processed" / "history_2024-01-01_2024-01-02.parquet"
+    file_path = (
+        tmp_path / "data" / "processed" / "history_2024-01-01_2024-01-02.parquet"
+    )
 
     assert file_path.exists()
 
@@ -354,4 +401,3 @@ def test_save_to_parquet_adds_suffix_if_missing(sample_df, tmp_path):
 
     df = pd.read_parquet(expected_path)
     pd.testing.assert_frame_equal(sample_df, df)
-    
