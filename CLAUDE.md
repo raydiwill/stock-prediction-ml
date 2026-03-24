@@ -41,6 +41,7 @@ feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
 
 ## Future implementation
 
+- **Logging**: Switch from stdlib `logging` to `loguru` — simpler API, no handler boilerplate, immune to Alembic's `disable_existing_loggers`
 - **Monitoring**: Grafana/Prometheus for drift detection
 - **Deployment**: Docker containerization
 
