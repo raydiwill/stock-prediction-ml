@@ -11,7 +11,7 @@ Usage:
 from datetime import datetime
 
 from airflow.models import Variable
-from airflow.sdk import dag, task, Param
+from airflow.sdk import Param, dag, task
 
 PROJECT_ROOT = Variable.get("project_root", default_var="/app")
 

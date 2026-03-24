@@ -454,6 +454,11 @@ Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker
 - **Scope**: Replace pandas in `build_features.py` for faster feature computation
 - **Benefit**: Lazy evaluation, multi-threaded, lower memory usage on larger datasets
 
+#### Shared prediction service — DRY model serving
+- **Scope**: Extract model loading + prediction + post-processing into a shared `predict_service.py` module
+- **Benefit**: Both the FastAPI API and batch prediction script import the same core logic — no duplication of model interaction code
+- **Pattern**: API handles HTTP I/O, batch script handles file I/O, shared module handles model logic
+
 #### Slack integration — Pipeline notifications
 - **Scope**: Alert on pipeline failures, model promotion events, drift detection
 - **Integration point**: Airflow callbacks, Grafana alerting, or custom hooks
