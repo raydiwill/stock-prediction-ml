@@ -51,12 +51,16 @@ from sklearn.preprocessing import OneHotEncoder
 from stock_prediction_ml.config.settings import settings
 
 # Configure enhanced logging with timestamps and better formatting
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+)
+logger.addHandler(handler)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -820,6 +824,10 @@ def main(config_path: str | Path | None = None):
 
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
+
+    # MLflow/Alembic changes root logger level from INFO → WARNING;
+    # reset it so propagated messages are not silenced.
+    logging.getLogger().setLevel(logging.INFO)
 
     # Get model name from config for Model Registry
     model_name = mlflow_config.get("registered_model_name", "stock_prediction_classifier")
