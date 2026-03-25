@@ -9,11 +9,15 @@ Why mock Variable.get?
     try to hit the metadata DB and crash.
 """
 
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from airflow.models import DagBag
+from airflow.models import DagBag, DagRun, TaskInstance
+from airflow.utils.state import DagRunState
+from airflow.utils.types import DagRunType
 
 DAGS_DIR = str(Path(__file__).parent.parent / "dags")
 
@@ -23,8 +27,11 @@ _VARIABLE_DEFAULTS: dict[str, str] = {
 }
 
 
-def _mock_variable_get(key: str, default_var: str | None = None) -> str:
-    """Stand-in for airflow.models.Variable.get during tests."""
+def _mock_variable_get(key: str, default_var: str | None = None, **kwargs) -> str:
+    """Stand-in for airflow.models.Variable.get during tests.
+
+    Accepts **kwargs because render-time calls pass deserialize_json=...
+    """
     return _VARIABLE_DEFAULTS.get(key, default_var or "")
 
 
@@ -79,3 +86,41 @@ def prediction_dag(dag_bag: DagBag):
     assert prediction_dag is not None
 
     return prediction_dag
+
+
+# ---------------------------------------------------------------------------
+# Rendered-task fixtures (template rendering needs DagRun + TaskInstance)
+# ---------------------------------------------------------------------------
+
+_LOGICAL_DATE = datetime(2025, 7, 1, tzinfo=timezone.utc)
+
+
+def _render_dag_tasks(dag) -> dict[str, object]:
+    """Render all tasks in a DAG and return {task_id: rendered_task}.
+
+    Uses deepcopy so rendering doesn't mutate the session-scoped DAG object.
+    """
+    dag = deepcopy(dag)
+    dr = DagRun(
+        dag_id=dag.dag_id,
+        run_id="test_render",
+        run_type=DagRunType.MANUAL,
+        logical_date=_LOGICAL_DATE,
+        run_after=_LOGICAL_DATE,
+        start_date=_LOGICAL_DATE,
+        state=DagRunState.RUNNING,
+    )
+    rendered = {}
+    with patch("airflow.models.Variable.get", side_effect=_mock_variable_get):
+        for task in dag.tasks:
+            ti = TaskInstance(task=task, run_id=dr.run_id, dag_version_id=None)
+            ti.dag_run = dr
+            ti.render_templates()
+            rendered[task.task_id] = task
+    return rendered
+
+
+@pytest.fixture(scope="session")
+def rendered_fe_tasks(feature_engineering_dag) -> dict[str, object]:
+    """Return rendered tasks for the feature engineering DAG."""
+    return _render_dag_tasks(feature_engineering_dag)
