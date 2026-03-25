@@ -306,6 +306,8 @@ def load_selected_features(
 def load_training_data_from_feast(
     feature_service_name: str = "stock_training_service",
     feast_repo_path: str | Path | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """Load training features from Feast offline store using historical retrieval.
 
@@ -313,9 +315,16 @@ def load_training_data_from_feast(
         feature_service_name (str): Name of the Feast feature service to use.
         feast_repo_path (str | Path | None): Path to Feast repo;
                                             defaults to src/stock_prediction_ml/feast_repo.
+        start_date (str | None): Earliest date to include (YYYY-MM-DD).
+            Omit to include all history.
+        end_date (str | None): Latest date to include (YYYY-MM-DD).
+            Omit to include up to latest available.
 
     Returns:
         pd.DataFrame: Historical features with entity columns, timestamps, and all feature views.
+
+    Raises:
+        ValueError: If date filtering results in zero rows.
 
     Example:
         >>> df = load_features_from_feast("stock_training_service")
@@ -336,6 +345,18 @@ def load_training_data_from_feast(
     # Prepare entity for point-in-time Feast
     entity_df = raw_df[["symbol", "date"]].copy()
     entity_df["date"] = pd.to_datetime(entity_df["date"])
+
+    # Apply date filtering if provided
+    if start_date is not None:
+        entity_df = entity_df[entity_df["date"] >= pd.to_datetime(start_date)]
+    if end_date is not None:
+        entity_df = entity_df[entity_df["date"] <= pd.to_datetime(end_date)]
+
+    if entity_df.empty:
+        raise ValueError(
+            f"No data remaining after date filter "
+            f"(start_date={start_date}, end_date={end_date})"
+        )
 
     logger.info(f"Entity DataFrame shape: {entity_df.shape}")
     logger.info(f"Date range: {entity_df['date'].min()} to {entity_df['date'].max()}")
@@ -785,7 +806,11 @@ def save_model_artifacts_locally(
     }
 
 
-def main(config_path: str | Path | None = None):
+def main(
+    config_path: str | Path | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
     """End-to-end training pipeline with MLflow logging.
 
     Steps:
@@ -799,6 +824,8 @@ def main(config_path: str | Path | None = None):
 
     Args:
         config_path (str | Path | None): Path to YAML config; defaults to local.yaml.
+        start_date (str | None): Earliest date to include in training data (YYYY-MM-DD).
+        end_date (str | None): Latest date to include in training data (YYYY-MM-DD).
 
     Returns:
         None
@@ -810,7 +837,11 @@ def main(config_path: str | Path | None = None):
 
     config = load_config(config_path)
     log_section("Loading data from Feast")
-    df = load_training_data_from_feast(feature_service_name=config.get("feast_service_name"))
+    df = load_training_data_from_feast(
+        feature_service_name=config.get("feast_service_name"),
+        start_date=start_date,
+        end_date=end_date,
+    )
     selected_features = load_selected_features(config.get("selected_features_path"))
     logger.info(f"Selected features: {len(selected_features)} features")
 
@@ -841,6 +872,8 @@ def main(config_path: str | Path | None = None):
         mlflow.log_artifact(config_path or "configs/training/local.yaml", artifact_path="config")
         mlflow.log_params(config.get("model_params", {}))
         mlflow.log_param("selected_feature_count", len(selected_features))
+        mlflow.log_param("training_start_date", start_date or "all")
+        mlflow.log_param("training_end_date", end_date or "all")
 
         log_section("Splitting data")
         train_val_df, test_df = split_data_train_test(df, test_size=config.get("test_size", 0.1))
@@ -955,5 +988,17 @@ if __name__ == "__main__":
         default=None,
         help="Path to the training configuration YAML file.",
     )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Earliest date to include in training data (YYYY-MM-DD). Omit to include all history.",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default=None,
+        help="Latest date to include in training data (YYYY-MM-DD). Omit to include up to latest available.",
+    )
     args = parser.parse_args()
-    main(args.config)
+    main(args.config, start_date=args.start_date, end_date=args.end_date)
