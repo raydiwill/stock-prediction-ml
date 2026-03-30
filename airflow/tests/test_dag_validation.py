@@ -14,8 +14,7 @@ EXPECTED_DAG_IDS = {
     "ingestion_dag",
     "feature_engineering_dag",
     "training_dag",
-    "hello_world",
-    "prediction_dag"
+    "prediction_dag",
 }
 
 
