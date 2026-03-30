@@ -127,5 +127,11 @@ def rendered_fe_tasks(feature_engineering_dag) -> dict[str, object]:
 
 @pytest.fixture(scope="session")
 def rendered_training_tasks(training_dag) -> dict[str, object]:
-    """Return rendered tasks for the feature engineering DAG."""
+    """Return rendered tasks for the training DAG."""
     return _render_dag_tasks(training_dag)
+
+
+@pytest.fixture(scope="session")
+def rendered_prediction_tasks(prediction_dag) -> dict[str, object]:
+    """Return rendered tasks for the prediction DAG."""
+    return _render_dag_tasks(prediction_dag)
