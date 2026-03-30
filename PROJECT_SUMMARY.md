@@ -15,7 +15,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **Feature store**: Feast feature definitions, materialization pipeline, online store (SQLite) with 203+ feature records
 - ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, prediction persistence, request logging middleware
 - ✅ **UI**: Streamlit dashboard with 3 pages (Live Prediction, Historical Data, About Model), Plotly charts, and API health monitoring
-- ❌ **Orchestration**: Airflow DAGs not implemented
+- ✅ **Orchestration**: Airflow DAGs for automated pipeline execution (ingestion, feature engineering, training, prediction)
 - ❌ **Monitoring**: Grafana/Prometheus stack not implemented
 
 ## Primary stack
@@ -29,7 +29,9 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 **UI**: Streamlit (dashboard), Plotly (interactive charts)
 
-**Planned**: Docker, Airflow, Grafana
+**Orchestration**: Apache Airflow 3.1.7
+
+**Planned**: Docker, Grafana
 
 ## Current status
 ### ✅ Completed
@@ -218,10 +220,20 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
       - `./run_ui.sh` (uses `uv run streamlit run` with file watching)
       - `streamlit run src/stock_prediction_ml/ui/app.py`
 
+12. **Orchestration** ([`airflow/dags/`](airflow/dags/))
+    - **Infrastructure**: Apache Airflow 3.1.7 with LocalExecutor, SQLite metadata DB
+    - **DAGs** (4 production DAGs):
+      - `ingestion_dag`: Daily 07:00 UTC — fetch EOD data (MarketStack), validate (Great Expectations), ingest to DB. Retries: 3/2/2 per task. Params: `tickers` (Mag-7 default)
+      - `feature_engineering_dag`: Manual trigger — export DB history (180d), build technical features, `feast apply`, `feast materialize-incremental`. 4-task linear chain
+      - `training_dag`: Weekly Sundays 09:00 UTC — train CatBoost via Feast features, auto-promote champion/challenger. Params: `config_path`, `start_date`
+      - `prediction_dag`: Daily 08:00 UTC (after ingestion) — materialize features, batch predict with champion model, persist to DB. Params: `tickers`
+    - **All DAGs**: TaskFlow API (`@task.bash`), `catchup=False`, env vars from `Variable.get("project_root")`
+    - **Testing** ([`airflow/tests/`](airflow/tests/)): 5 test modules with session-scoped DagBag, mocked Variables, template rendering. Level 1 (DAG validation) + Level 2 (per-DAG structure, schedule, retries, params, env)
+    - **Setup**: [`setup_airflow.sh`](setup_airflow.sh) installs Airflow 3.1.7 with version-pinned constraints
+
 ### ❌ Not Started
-1. **Orchestration**: Airflow DAGs for automated pipeline execution
-2. **Monitoring**: Grafana dashboards for drift detection and performance tracking
-3. **Deployment**: Docker containerization, model serving infrastructure
+1. **Monitoring**: Grafana dashboards for drift detection and performance tracking
+2. **Deployment**: Docker containerization, model serving infrastructure
 
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
@@ -257,8 +269,16 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`tests/test_db.py`](tests/test_db.py): Database CRUD and relationship tests
 - [`tests/test_ui.py`](tests/test_ui.py): UI logic, API client, and chart builder tests
 
+### Orchestration
+- [`airflow/dags/ingestion_dag.py`](airflow/dags/ingestion_dag.py): Daily data ingestion pipeline
+- [`airflow/dags/feature_engineering_dag.py`](airflow/dags/feature_engineering_dag.py): Feature building and Feast materialization
+- [`airflow/dags/training_dag.py`](airflow/dags/training_dag.py): Weekly model training and promotion
+- [`airflow/dags/prediction_dag.py`](airflow/dags/prediction_dag.py): Daily batch predictions
+- [`airflow/tests/conftest.py`](airflow/tests/conftest.py): Shared fixtures with mocked Variables and template rendering
+
 ### Scripts
 - [`run_ui.sh`](run_ui.sh): Launch Streamlit with file watching via `uv run`
+- [`setup_airflow.sh`](setup_airflow.sh): Install Airflow 3.1.7 with version-pinned constraints
 
 ### Notebooks
 - [`notebooks/05_baseline.ipynb`](notebooks/05_baseline.ipynb): Feature selection with permutation importance
@@ -374,6 +394,16 @@ Feature vector (34 features after encoding `symbol`):
 - `TestPredict`: Mocked httpx POST with prediction response parsing
 - `TestGetHistoricalData`: Mocked httpx GET with query parameter validation
 - `TestGetModelInfo`: Mocked model metadata retrieval
+
+✅ **Airflow DAGs**:
+- `test_no_import_errors`: All DAG files parse without errors
+- `test_expected_dags_present`: All 4 production DAGs load with correct IDs
+- `test_dag_has_tags`: Every DAG has at least one tag for UI filtering
+- `test_catchup_disabled`: Catchup disabled on all DAGs (prevent backfill storms)
+- `test_dependency_chain` (per DAG): Task wiring matches expected linear chains
+- `test_*_retries`: Retry counts match expected values (ingestion: 3/2/2, prediction: 0/2)
+- `test_*_param_exists`: DAG parameters (tickers, config_path, start_date) registered
+- `test_rendered_pythonpath` / `test_rendered_path`: Env vars render correctly from Variables
 
 ## Notes / decisions
 ### Architecture
