@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "catboost>=1.2.8",
-    "fastapi>=0.121.3",
+    "fastapi>=0.117.1,<0.121",
     "feast>=0.50.0",
     "great-expectations>=1.8.1",
     "httpx>=0.28.1",
@@ -37,6 +37,9 @@ dependencies = [
     "xgboost>=3.1.1",
 ]
 
+[tool.uv]
+reinstall-package = ["stock-prediction-ml"]
+
 [tool.hatch.build]
 sources = ["src"]
 
@@ -55,6 +58,8 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = ["--import-mode=importlib"]
+testpaths = ["tests"]
 filterwarnings = [
     "ignore::marshmallow.warnings.ChangedInMarshmallow4Warning",
 ]

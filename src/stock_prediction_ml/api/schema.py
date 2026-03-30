@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class StockRequest(BaseModel):
-    symbol: str = Field(..., example="AAPL", description="Stock ticker symbol")
+    symbol: str = Field(..., examples=["AAPL"], description="Stock ticker symbol")
     date: str = Field(
-        ..., example="2025-01-12", description="Trading date in format YYYY-MM-DD"
+        ..., examples=["2025-01-12"], description="Trading date in format YYYY-MM-DD"
     )
 
     @field_validator("symbol")
@@ -38,36 +38,36 @@ class StockRequest(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    symbol: str = Field(..., example="AAPL")
-    date: str = Field(..., example="2025-01-12")
+    symbol: str = Field(..., examples=["AAPL"])
+    date: str = Field(..., examples=["2025-01-12"])
     prediction: int = Field(..., ge=0, le=1, description="0=down, 1=up")
     prediction_label: str = Field(
-        ..., example="UP", description="Human-readable prediction"
+        ..., examples=["UP"], description="Human-readable prediction"
     )
     probability: float = Field(..., ge=0.0, le=1.0, description="Model confidence")
     predicted_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="UTC timestamp when prediction was made",
     )
-    model_version: str = Field(..., example="1")
+    model_version: str = Field(..., examples=["1"])
 
 
 class HealthResponse(BaseModel):
-    status: str = Field(..., example="healthy")
+    status: str = Field(..., examples=["healthy"])
     model_loaded: bool
     feast_online_store: bool
-    model_version: str | None = Field(None, example="1")
+    model_version: str | None = Field(None, examples=["1"])
 
 
 class ModelInfoResponse(BaseModel):
     """Response schema for GET /model/info — champion model metadata and diagnostics."""
 
-    model_version: str = Field(..., example="3")
-    model_alias: str = Field(..., example="champion")
-    run_id: str = Field(..., example="7d4dbfd5a9264229841cfdbc742f7f07")
+    model_version: str = Field(..., examples=["3"])
+    model_alias: str = Field(..., examples=["champion"])
+    run_id: str = Field(..., examples=["7d4dbfd5a9264229841cfdbc742f7f07"])
     metrics: dict[str, float] = Field(
         ...,
-        example={"test_accuracy": 0.68, "test_roc_auc": 0.72},
+        examples=[{"test_accuracy": 0.68, "test_roc_auc": 0.72}],
     )
 
     # Base64-encoded PNG strings keyed by plot name
@@ -83,15 +83,15 @@ class ModelInfoResponse(BaseModel):
 class DailyRecord(BaseModel):
     """One trading day: close price, actual movement, and optional prediction."""
 
-    date: str = Field(..., example="2025-01-12")
+    date: str = Field(..., examples=["2025-01-12"])
     close: float = Field(..., description="Closing price")
     actual_direction: str | None = Field(
         None,
-        example="UP",
+        examples=["UP"],
         description="Actual price movement vs previous day (UP/DOWN/None for first day)",
     )
     predicted_direction: str | None = Field(
-        None, example="UP", description="Model prediction if one exists for this day"
+        None, examples=["UP"], description="Model prediction if one exists for this day"
     )
     probability: float | None = Field(
         None, description="Model confidence if prediction exists"

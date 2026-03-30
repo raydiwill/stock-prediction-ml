@@ -32,15 +32,18 @@ cd src/stock_prediction_ml/feast_repo && feast apply
 
 # Materialize features to online store
 feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
+
+# Run Airflow DAG tests
+pytest orchestration/tests/ -v
+
+# Start Airflow (local dev)
+AIRFLOW_HOME=orchestration airflow standalone
 ```
 
 ## Current Focus
 
 **Next Tasks**:
-- **Orchestration**: Airflow DAGs for automated pipeline execution
-
-## Future implementation
-
+- **Logging**: Switch from stdlib `logging` to `loguru` — simpler API, no handler boilerplate, immune to Alembic's `disable_existing_loggers`
 - **Monitoring**: Grafana/Prometheus for drift detection
 - **Deployment**: Docker containerization
 
@@ -95,6 +98,10 @@ src/stock_prediction_ml/
 tests/             # Pytest test modules (9 modules, 80+ tests)
 configs/           # YAML configs (training/local.yaml)
 notebooks/         # Jupyter exploration (01-06)
+
+orchestration/
+├── dags/          # Airflow DAGs (ingestion, features, training, prediction)
+└── tests/         # DAG validation and per-DAG structure tests
 ```
 
 ## Important Constraints
@@ -124,3 +131,5 @@ notebooks/         # Jupyter exploration (01-06)
 | DB models | [src/stock_prediction_ml/db/models.py](src/stock_prediction_ml/db/models.py) |
 | Test patterns | [tests/test_train.py](tests/test_train.py), [tests/test_api.py](tests/test_api.py), [tests/test_ui.py](tests/test_ui.py) |
 | Training config | [configs/training/local.yaml](configs/training/local.yaml) |
+| Airflow DAGs | [orchestration/dags/](orchestration/dags/) |
+| Airflow tests | [orchestration/tests/](orchestration/tests/) |

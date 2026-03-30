@@ -10,11 +10,10 @@ Pipeline Steps:
     4. Train CatBoost with early stopping
     5. Evaluate on validation and test sets
     6. Log metrics, artifacts, and model to MLflow
-    7. Register model and assign alias based on performance
+    7. Register model in MLflow Model Registry
 
 Key Components:
     - StockPredictionModel: MLflow pyfunc wrapper bundling model + encoder
-    - promote_model_with_alias: Automated model promotion based on thresholds
     - save_model_artifacts_locally: Prepare artifacts for pyfunc logging
 
 Usage:
@@ -46,19 +45,22 @@ import yaml
 from catboost import CatBoostClassifier
 from feast import FeatureStore
 from mlflow.models import infer_signature
-from mlflow.tracking import MlflowClient
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
 from stock_prediction_ml.config.settings import settings
 
 # Configure enhanced logging with timestamps and better formatting
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+)
+logger.addHandler(handler)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -304,6 +306,8 @@ def load_selected_features(
 def load_training_data_from_feast(
     feature_service_name: str = "stock_training_service",
     feast_repo_path: str | Path | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """Load training features from Feast offline store using historical retrieval.
 
@@ -311,9 +315,16 @@ def load_training_data_from_feast(
         feature_service_name (str): Name of the Feast feature service to use.
         feast_repo_path (str | Path | None): Path to Feast repo;
                                             defaults to src/stock_prediction_ml/feast_repo.
+        start_date (str | None): Earliest date to include (YYYY-MM-DD).
+            Omit to include all history.
+        end_date (str | None): Latest date to include (YYYY-MM-DD).
+            Omit to include up to latest available.
 
     Returns:
         pd.DataFrame: Historical features with entity columns, timestamps, and all feature views.
+
+    Raises:
+        ValueError: If date filtering results in zero rows.
 
     Example:
         >>> df = load_features_from_feast("stock_training_service")
@@ -334,6 +345,18 @@ def load_training_data_from_feast(
     # Prepare entity for point-in-time Feast
     entity_df = raw_df[["symbol", "date"]].copy()
     entity_df["date"] = pd.to_datetime(entity_df["date"])
+
+    # Apply date filtering if provided
+    if start_date is not None:
+        entity_df = entity_df[entity_df["date"] >= pd.to_datetime(start_date)]
+    if end_date is not None:
+        entity_df = entity_df[entity_df["date"] <= pd.to_datetime(end_date)]
+
+    if entity_df.empty:
+        raise ValueError(
+            f"No data remaining after date filter "
+            f"(start_date={start_date}, end_date={end_date})"
+        )
 
     logger.info(f"Entity DataFrame shape: {entity_df.shape}")
     logger.info(f"Date range: {entity_df['date'].min()} to {entity_df['date'].max()}")
@@ -783,80 +806,11 @@ def save_model_artifacts_locally(
     }
 
 
-def promote_model_with_alias(
-    model_name: str,
-    version: int,
-    test_metrics: dict[str, float],
-) -> str | None:
-    """
-    Assign alias to a registered model version based on performance metrics.
-
-    This function is called AFTER log_model() with registered_model_name parameter,
-    which already creates the model version. This function only handles alias assignment.
-
-    Args:
-        model_name: Name of the registered model (e.g., "stock_prediction_classifier")
-        version: Version number to potentially promote (from log_model return value)
-        test_metrics: Evaluation metrics for promotion decision
-            Expected keys: "test_accuracy", "test_roc_auc"
-
-    Returns:
-        str | None: The alias assigned ("champion", "challenger") or None if below thresholds
-
-    Promotion thresholds:
-        - "champion": AUC >= 0.60 AND Accuracy >= 0.55
-        - "challenger": AUC >= 0.55 AND Accuracy >= 0.52
-        - None: Below thresholds
-
-    Loading models by alias:
-        - Champion: mlflow.pyfunc.load_model("models:/{model_name}@champion")
-        - Challenger: mlflow.pyfunc.load_model("models:/{model_name}@challenger")
-
-    Example:
-        >>> alias = promote_model_with_alias(
-        ...     model_name="stock_prediction_classifier",
-        ...     version=3,
-        ...     test_metrics={"test_accuracy": 0.58, "test_roc_auc": 0.62},
-        ... )
-        >>> print(f"Assigned alias: {alias}")  # "champion"
-    """
-    client = MlflowClient()
-
-    # Define promotion thresholds
-    CHAMPION_THRESHOLD = {"auc": 0.70, "accuracy": 0.65}
-    CHALLENGER_THRESHOLD = {"auc": 0.65, "accuracy": 0.60}
-
-    test_accuracy = test_metrics.get("test_accuracy", 0)
-    test_auc_roc = test_metrics.get("test_roc_auc", 0)
-
-    alias = None
-    meets_champion = (
-        test_accuracy >= CHAMPION_THRESHOLD["accuracy"]
-        and test_auc_roc >= CHAMPION_THRESHOLD["auc"]
-    )
-    meets_challenger = (
-        test_accuracy >= CHALLENGER_THRESHOLD["accuracy"]
-        and test_auc_roc >= CHALLENGER_THRESHOLD["auc"]
-    )
-    if meets_champion:
-        alias = "champion"
-    elif meets_challenger:
-        alias = "challenger"
-
-    if not alias:
-        logger.warning("Metrics below thresholds - no alias assigned")
-        return None
-
-    client.set_registered_model_alias(name=model_name, alias=alias, version=version)
-
-    description = f"Accuracy: {test_accuracy}; AUC ROC: {test_auc_roc}"
-    client.update_model_version(name=model_name, version=str(version), description=description)
-
-    logger.info(f"Set alias '{alias}' on version {version}")
-    return alias
-
-
-def main(config_path: str | Path | None = None):
+def main(
+    config_path: str | Path | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
     """End-to-end training pipeline with MLflow logging.
 
     Steps:
@@ -870,6 +824,8 @@ def main(config_path: str | Path | None = None):
 
     Args:
         config_path (str | Path | None): Path to YAML config; defaults to local.yaml.
+        start_date (str | None): Earliest date to include in training data (YYYY-MM-DD).
+        end_date (str | None): Latest date to include in training data (YYYY-MM-DD).
 
     Returns:
         None
@@ -881,7 +837,11 @@ def main(config_path: str | Path | None = None):
 
     config = load_config(config_path)
     log_section("Loading data from Feast")
-    df = load_training_data_from_feast(feature_service_name=config.get("feast_service_name"))
+    df = load_training_data_from_feast(
+        feature_service_name=config.get("feast_service_name"),
+        start_date=start_date,
+        end_date=end_date,
+    )
     selected_features = load_selected_features(config.get("selected_features_path"))
     logger.info(f"Selected features: {len(selected_features)} features")
 
@@ -896,6 +856,10 @@ def main(config_path: str | Path | None = None):
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
 
+    # MLflow/Alembic changes root logger level from INFO → WARNING;
+    # reset it so propagated messages are not silenced.
+    logging.getLogger().setLevel(logging.INFO)
+
     # Get model name from config for Model Registry
     model_name = mlflow_config.get("registered_model_name", "stock_prediction_classifier")
 
@@ -908,6 +872,8 @@ def main(config_path: str | Path | None = None):
         mlflow.log_artifact(config_path or "configs/training/local.yaml", artifact_path="config")
         mlflow.log_params(config.get("model_params", {}))
         mlflow.log_param("selected_feature_count", len(selected_features))
+        mlflow.log_param("training_start_date", start_date or "all")
+        mlflow.log_param("training_end_date", end_date or "all")
 
         log_section("Splitting data")
         train_val_df, test_df = split_data_train_test(df, test_size=config.get("test_size", 0.1))
@@ -1002,19 +968,11 @@ def main(config_path: str | Path | None = None):
         log_section("Training complete")
         logger.info(f"View results: mlflow ui --backend-store-uri {tracking_uri}")
 
-    # Promote model with alias based on metrics
-    log_section("Promoting model")
-    alias = promote_model_with_alias(
-        model_name=model_name,
-        version=int(model_version),
-        test_metrics=test_metrics,
+    # Log promote hint
+    logger.info(
+        f"To promote: python -m stock_prediction_ml.model.promote "
+        f"--version {model_version} --config configs/training/local.yaml"
     )
-
-    # Log helpful message for how to load the model:
-    if alias:
-        logger.info(f"Load with: mlflow.pyfunc.load_model('models:/{model_name}@{alias}')")
-    else:
-        logger.info(f"Load with: mlflow.pyfunc.load_model('models:/{model_name}/{model_version}')")
 
     # Clean up resources
     log_section("Clean up")
@@ -1030,5 +988,18 @@ if __name__ == "__main__":
         default=None,
         help="Path to the training configuration YAML file.",
     )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Earliest date to include in training data (YYYY-MM-DD). Omit to include all history.",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default=None,
+        help="Latest date to include in training data (YYYY-MM-DD). " \
+        "Omit to include up to latest available.",
+    )
     args = parser.parse_args()
-    main(args.config)
+    main(args.config, start_date=args.start_date, end_date=args.end_date)
