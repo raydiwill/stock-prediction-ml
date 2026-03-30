@@ -7,15 +7,16 @@
 ![Feast](https://img.shields.io/badge/Feast-Feature%20Store-green)
 ![FastAPI](https://img.shields.io/badge/FastAPI-REST%20API-teal)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red)
-![Status](https://img.shields.io/badge/Status-92%25%20Complete-yellow)
+![Airflow](https://img.shields.io/badge/Airflow-Orchestration-017CEE)
+![Status](https://img.shields.io/badge/Status-95%25%20Complete-yellow)
 
 ---
 
 ## Status
 
-**Current Stage**: Full ML pipeline with REST API, Streamlit dashboard, and comprehensive test suite (9 modules, 80+ tests).
+**Current Stage**: Full ML pipeline with REST API, Streamlit dashboard, Airflow orchestration, and comprehensive test suite.
 
-**Next Step**: Airflow DAGs for automated pipeline orchestration.
+**Next Step**: Monitoring (Grafana/Prometheus) and Docker containerization.
 
 | Component | Status |
 |-----------|--------|
@@ -27,7 +28,7 @@
 | REST API | ✅ Complete |
 | Streamlit UI | ✅ Complete |
 | Testing (80+ tests) | ✅ Complete |
-| Airflow Orchestration | ⏳ Planned |
+| Airflow Orchestration | ✅ Complete |
 | Monitoring (Grafana) | ⏳ Planned |
 | Docker Deployment | ⏳ Planned |
 
@@ -44,6 +45,7 @@ A **portfolio project** demonstrating production ML practices for financial time
 - Trains a **CatBoost classifier** to predict if tomorrow's close > today's close
 - Tracks experiments and registers models via **MLflow**
 - Serves predictions through a **FastAPI** endpoint with real-time feature retrieval
+- Orchestrates the full pipeline via **Airflow** DAGs (ingestion, features, training, prediction)
 - Visualizes predictions via a **Streamlit** dashboard with interactive charts
 
 **Why this project?** To try and get rich! *(But seriously speaking, I want to apply my uni knowledge and tutorial hells into practical projects, something I can used in daily stock trading)*
@@ -72,6 +74,11 @@ A **portfolio project** demonstrating production ML practices for financial time
 | **Feast** | Feature store (offline for training, online for serving) |
 | **Great Expectations** | Data validation and quality checks |
 | **pytest** | Testing with synthetic fixtures (hermetic CI) |
+
+### Orchestration
+| Technology | Purpose |
+|------------|---------|
+| **Airflow** | DAG-based pipeline orchestration (ingestion → features → training → prediction) |
 
 ### API & UI
 | Technology | Purpose |
@@ -170,6 +177,22 @@ uvicorn src.stock_prediction_ml.api.main:app --reload
 # or: streamlit run src/stock_prediction_ml/ui/app.py
 ```
 
+### Full Pipeline (Airflow)
+```bash
+# Set up Airflow
+export AIRFLOW_HOME=$(pwd)/orchestration
+airflow standalone
+
+# DAGs run on schedule:
+# - ingestion_dag:  Daily @ 07:00 UTC (fetch → validate → ingest)
+# - feature_engineering_dag: Manual trigger (build features → materialize to Feast)
+# - training_dag:   Weekly Sunday @ 09:00 UTC (train → auto-promote)
+# - prediction_dag: Daily @ 08:00 UTC (materialize → batch predict)
+
+# Run Airflow DAG tests
+pytest orchestration/tests/ -v
+```
+
 ### Full Pipeline (Manual)
 ```bash
 # 1. Pull stock data
@@ -225,6 +248,11 @@ src/stock_prediction_ml/
 tests/               # 9 modules, 80+ hermetic tests
 configs/             # YAML training configurations
 notebooks/           # Exploration & tuning (01-06)
+
+orchestration/
+├── dags/            # Airflow DAGs (ingestion, features, training, prediction)
+├── tests/           # DAG validation + per-DAG structure tests
+└── airflow.cfg      # Airflow config (LocalExecutor, SQLite)
 ```
 
 ---
@@ -236,6 +264,7 @@ Built as a learning project to understand production ML systems. Inspired by:
 - [MLflow Model Registry](https://mlflow.org/docs/latest/model-registry.html)
 - [Streamlit documentation](https://docs.streamlit.io/)
 - [FastAPI documentation](https://fastapi.tiangolo.com/)
+- [Apache Airflow documentation](https://airflow.apache.org/docs/)
 
 ---
 
