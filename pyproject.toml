@@ -51,6 +51,9 @@ dev = [
     "pytest>=8.4.2",
     "ruff>=0.14.1",
 ]
+airflow = [
+    "apache-airflow>=2.10.0",
+]
 
 [tool.ruff]
 line-length = 100

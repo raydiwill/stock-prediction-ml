@@ -29,7 +29,7 @@ jobs:
           key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml','uv.lock') }}
 
       - name: Sync dependencies
-        run: uv sync
+        run: uv sync --group airflow
 
       - name: Install package
         run: uv pip install -e .
@@ -52,5 +52,4 @@ jobs:
           fi
 
       - name: Run Airflow tests
-        if: false  # Enable when airflow is added to CI dependencies
         run: uv run pytest airflow/tests/ -v
