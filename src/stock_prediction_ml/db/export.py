@@ -85,7 +85,7 @@ def export_validated_data(
 
 
 def save_to_parquet(
-    df: pd.DataFrame, start_date, end_date, output_path: Path | None = None
+    df: pd.DataFrame, start_date: str, end_date: str, output_path: Path | None = None
 ) -> None:
     """Write DataFrame to parquet, creating parent dirs if needed.
 
