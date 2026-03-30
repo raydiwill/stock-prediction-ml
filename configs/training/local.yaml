@@ -22,3 +22,11 @@ mlflow:
   experiment_name: Stock_Prediction_Experiment
   run_name: Stock_Prediction_Run
   registered_model_name: stock_prediction_classifier
+
+promotion:
+  champion:
+    accuracy: 0.65
+    auc: 0.70
+  challenger:
+    accuracy: 0.60
+    auc: 0.65

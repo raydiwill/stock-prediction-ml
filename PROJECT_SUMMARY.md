@@ -15,7 +15,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - ✅ **Feature store**: Feast feature definitions, materialization pipeline, online store (SQLite) with 203+ feature records
 - ✅ **REST API**: FastAPI with MLflow Model Registry + Feast online store integration, prediction persistence, request logging middleware
 - ✅ **UI**: Streamlit dashboard with 3 pages (Live Prediction, Historical Data, About Model), Plotly charts, and API health monitoring
-- ❌ **Orchestration**: Airflow DAGs not implemented
+- ✅ **Orchestration**: Airflow DAGs for automated pipeline execution (ingestion, feature engineering, training, prediction)
 - ❌ **Monitoring**: Grafana/Prometheus stack not implemented
 
 ## Primary stack
@@ -29,7 +29,9 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 **UI**: Streamlit (dashboard), Plotly (interactive charts)
 
-**Planned**: Docker, Airflow, Grafana
+**Orchestration**: Apache Airflow 3.1.7
+
+**Planned**: Docker, Grafana
 
 ## Current status
 ### ✅ Completed
@@ -218,10 +220,20 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
       - `./run_ui.sh` (uses `uv run streamlit run` with file watching)
       - `streamlit run src/stock_prediction_ml/ui/app.py`
 
+12. **Orchestration** ([`orchestration/dags/`](orchestration/dags/))
+    - **Infrastructure**: Apache Airflow 3.1.7 with LocalExecutor, SQLite metadata DB
+    - **DAGs** (4 production DAGs):
+      - `ingestion_dag`: Daily 07:00 UTC — fetch EOD data (MarketStack), validate (Great Expectations), ingest to DB. Retries: 3/2/2 per task. Params: `tickers` (Mag-7 default)
+      - `feature_engineering_dag`: Manual trigger — export DB history (180d), build technical features, `feast apply`, `feast materialize-incremental`. 4-task linear chain
+      - `training_dag`: Weekly Sundays 09:00 UTC — train CatBoost via Feast features, auto-promote champion/challenger. Params: `config_path`, `start_date`
+      - `prediction_dag`: Daily 08:00 UTC (after ingestion) — materialize features, batch predict with champion model, persist to DB. Params: `tickers`
+    - **All DAGs**: TaskFlow API (`@task.bash`), `catchup=False`, env vars from `Variable.get("project_root")`
+    - **Testing** ([`orchestration/tests/`](orchestration/tests/)): 5 test modules with session-scoped DagBag, mocked Variables, template rendering. Level 1 (DAG validation) + Level 2 (per-DAG structure, schedule, retries, params, env)
+    - **Setup**: [`setup_airflow.sh`](setup_airflow.sh) installs Airflow 3.1.7 with version-pinned constraints
+
 ### ❌ Not Started
-1. **Orchestration**: Airflow DAGs for automated pipeline execution
-2. **Monitoring**: Grafana dashboards for drift detection and performance tracking
-3. **Deployment**: Docker containerization, model serving infrastructure
+1. **Monitoring**: Grafana dashboards for drift detection and performance tracking
+2. **Deployment**: Docker containerization, model serving infrastructure
 
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
@@ -257,8 +269,16 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`tests/test_db.py`](tests/test_db.py): Database CRUD and relationship tests
 - [`tests/test_ui.py`](tests/test_ui.py): UI logic, API client, and chart builder tests
 
+### Orchestration
+- [`orchestration/dags/ingestion_dag.py`](orchestration/dags/ingestion_dag.py): Daily data ingestion pipeline
+- [`orchestration/dags/feature_engineering_dag.py`](orchestration/dags/feature_engineering_dag.py): Feature building and Feast materialization
+- [`orchestration/dags/training_dag.py`](orchestration/dags/training_dag.py): Weekly model training and promotion
+- [`orchestration/dags/prediction_dag.py`](orchestration/dags/prediction_dag.py): Daily batch predictions
+- [`orchestration/tests/conftest.py`](orchestration/tests/conftest.py): Shared fixtures with mocked Variables and template rendering
+
 ### Scripts
 - [`run_ui.sh`](run_ui.sh): Launch Streamlit with file watching via `uv run`
+- [`setup_airflow.sh`](setup_airflow.sh): Install Airflow 3.1.7 with version-pinned constraints
 
 ### Notebooks
 - [`notebooks/05_baseline.ipynb`](notebooks/05_baseline.ipynb): Feature selection with permutation importance
@@ -375,6 +395,16 @@ Feature vector (34 features after encoding `symbol`):
 - `TestGetHistoricalData`: Mocked httpx GET with query parameter validation
 - `TestGetModelInfo`: Mocked model metadata retrieval
 
+✅ **Airflow DAGs**:
+- `test_no_import_errors`: All DAG files parse without errors
+- `test_expected_dags_present`: All 4 production DAGs load with correct IDs
+- `test_dag_has_tags`: Every DAG has at least one tag for UI filtering
+- `test_catchup_disabled`: Catchup disabled on all DAGs (prevent backfill storms)
+- `test_dependency_chain` (per DAG): Task wiring matches expected linear chains
+- `test_*_retries`: Retry counts match expected values (ingestion: 3/2/2, prediction: 0/2)
+- `test_*_param_exists`: DAG parameters (tickers, config_path, start_date) registered
+- `test_rendered_pythonpath` / `test_rendered_path`: Env vars render correctly from Variables
+
 ## Notes / decisions
 ### Architecture
 - **Temporal splits over random splits**: Date quantiles (90/5/5) prevent leakage in time-series data
@@ -434,6 +464,39 @@ Feature vector (34 features after encoding `symbol`):
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
 - **Containerization**: Docker Compose for local dev and production deployment
+
+### Future improvements (post-production)
+Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker/K8s) is stable.
+
+#### dbt (data build tool) — Data preparation layer
+- **Scope**: Replace the raw-to-validated transformation layer (Great Expectations + `db/ingest.py`), NOT feature engineering
+- **Recommended adapter**: `dbt-duckdb` — DuckDB queries Parquet natively, no server needed, aligns with existing Feast offline store
+- **What dbt replaces**:
+  - `combine_and_save_to_parquet()` → staging model using `read_parquet()`
+  - Great Expectations validation → dbt tests (`not_null`, `unique`, `accepted_values`, custom tests like `high > low`)
+  - `db/ingest.py` SHA256 dedup → incremental model with `unique_key=['symbol', 'date']`
+- **What stays in Python**: All feature engineering (`build_features.py`) — RSI, MACD, EMA, rolling windows are awkward in SQL and lose the pandas/numpy integration
+- **Pipeline with dbt**: `pull.py → raw Parquets → dbt (clean & validate) → clean table/Parquet → build_features.py → Feast → Model`
+- **Airflow integration**: `BashOperator` with `dbt run` or `cosmos` library for dbt-in-Airflow
+- **When to add**: Most valuable when adding more data sources (sentiment, fundamentals) where join/clean logic gets complex
+
+#### Polars — Performance upgrade for feature engineering
+- **Scope**: Replace pandas in `build_features.py` for faster feature computation
+- **Benefit**: Lazy evaluation, multi-threaded, lower memory usage on larger datasets
+
+#### Shared prediction service — DRY model serving
+- **Scope**: Extract model loading + prediction + post-processing into a shared `predict_service.py` module
+- **Benefit**: Both the FastAPI API and batch prediction script import the same core logic — no duplication of model interaction code
+- **Pattern**: API handles HTTP I/O, batch script handles file I/O, shared module handles model logic
+
+#### Slack integration — Pipeline notifications
+- **Scope**: Alert on pipeline failures, model promotion events, drift detection
+- **Integration point**: Airflow callbacks, Grafana alerting, or custom hooks
+
+#### direnv — Per-project AIRFLOW_HOME
+- **Problem**: `orchestration/airflow.cfg` has hardcoded absolute paths (dags_folder, sql_alchemy_conn, logs, etc.) tied to this machine — not portable and won't scale to multiple Airflow projects
+- **Solution**: Use `direnv` (`brew install direnv`) with a `.envrc` file in the project root to auto-set `AIRFLOW_HOME=orchestration` when entering the directory
+- **Benefit**: No global shell exports, works per-project, and avoids hardcoded paths in the config
 
 ---
 

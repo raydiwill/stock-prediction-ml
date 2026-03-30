@@ -50,3 +50,35 @@ jobs:
             echo "Running fast tests only (skipping slow tests)"
             uv run pytest -v -m "not slow"
           fi
+
+  airflow-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Cache airflow environment
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-airflow-${{ runner.os }}-py3.13
+
+      - name: Install airflow and test deps
+        run: |
+          uv venv
+          uv pip install "apache-airflow==3.1.7" pytest \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.1.7/constraints-3.13.txt"
+
+      - name: Initialize Airflow DB
+        run: uv run airflow db migrate
+
+      - name: Run Airflow tests
+        run: uv run pytest orchestration/tests/ -v
