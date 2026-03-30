@@ -104,7 +104,7 @@ def fetch_features(tickers: list[str]) -> pd.DataFrame:
             "symbol"
         ].tolist()
         logger.warning(f"No features found for symbols: {', '.join(missing_symbols)}")
-        features_df = features_df.dropna()
+        features_df = features_df.dropna().copy()
 
     if features_df.empty:
         raise ValueError("No valid features for any ticker.")
