@@ -59,6 +59,7 @@ target-version = "py311"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 addopts = ["--import-mode=importlib"]
+testpaths = ["tests"]
 filterwarnings = [
     "ignore::marshmallow.warnings.ChangedInMarshmallow4Warning",
 ]

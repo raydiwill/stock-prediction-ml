@@ -50,3 +50,7 @@ jobs:
             echo "Running fast tests only (skipping slow tests)"
             uv run pytest -v -m "not slow"
           fi
+
+      - name: Run Airflow tests
+        if: false  # Enable when airflow is added to CI dependencies
+        run: uv run pytest airflow/tests/ -v
