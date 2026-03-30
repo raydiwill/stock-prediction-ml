@@ -493,6 +493,11 @@ Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker
 - **Scope**: Alert on pipeline failures, model promotion events, drift detection
 - **Integration point**: Airflow callbacks, Grafana alerting, or custom hooks
 
+#### direnv — Per-project AIRFLOW_HOME
+- **Problem**: `orchestration/airflow.cfg` has hardcoded absolute paths (dags_folder, sql_alchemy_conn, logs, etc.) tied to this machine — not portable and won't scale to multiple Airflow projects
+- **Solution**: Use `direnv` (`brew install direnv`) with a `.envrc` file in the project root to auto-set `AIRFLOW_HOME=orchestration` when entering the directory
+- **Benefit**: No global shell exports, works per-project, and avoids hardcoded paths in the config
+
 ---
 
 ## Coding Instructions for Future Development
