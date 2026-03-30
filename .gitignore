@@ -35,3 +35,12 @@ orchestration/airflow-webserver.pid
 orchestration/standalone_admin_password.txt
 orchestration/airflow.cfg
 orchestration/*.json.generated
+
+# DB
+*.db
+
+# TODO note
+TODO.txt
+
+# Images
+*.png
