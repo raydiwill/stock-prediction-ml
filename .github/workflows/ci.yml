@@ -74,7 +74,8 @@ jobs:
       - name: Install airflow and test deps
         run: |
           uv venv
-          uv pip install "apache-airflow>=3.1.7" pytest
+          uv pip install "apache-airflow==3.1.7" pytest \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.1.7/constraints-3.13.txt"
 
       - name: Run Airflow tests
-        run: uv run pytest airflow/tests/ -v
+        run: uv run pytest orchestration/tests/ -v

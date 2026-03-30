@@ -34,10 +34,10 @@ cd src/stock_prediction_ml/feast_repo && feast apply
 feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
 
 # Run Airflow DAG tests
-pytest airflow/tests/ -v
+pytest orchestration/tests/ -v
 
 # Start Airflow (local dev)
-AIRFLOW_HOME=airflow airflow standalone
+AIRFLOW_HOME=orchestration airflow standalone
 ```
 
 ## Current Focus
@@ -99,7 +99,7 @@ tests/             # Pytest test modules (9 modules, 80+ tests)
 configs/           # YAML configs (training/local.yaml)
 notebooks/         # Jupyter exploration (01-06)
 
-airflow/
+orchestration/
 ├── dags/          # Airflow DAGs (ingestion, features, training, prediction)
 └── tests/         # DAG validation and per-DAG structure tests
 ```
@@ -131,5 +131,5 @@ airflow/
 | DB models | [src/stock_prediction_ml/db/models.py](src/stock_prediction_ml/db/models.py) |
 | Test patterns | [tests/test_train.py](tests/test_train.py), [tests/test_api.py](tests/test_api.py), [tests/test_ui.py](tests/test_ui.py) |
 | Training config | [configs/training/local.yaml](configs/training/local.yaml) |
-| Airflow DAGs | [airflow/dags/](airflow/dags/) |
-| Airflow tests | [airflow/tests/](airflow/tests/) |
+| Airflow DAGs | [orchestration/dags/](orchestration/dags/) |
+| Airflow tests | [orchestration/tests/](orchestration/tests/) |

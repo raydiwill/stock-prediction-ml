@@ -28,10 +28,10 @@ mlruns/
 .vscode
 
 # Airflow
-airflow/logs/
-airflow/*.db
-airflow/*.pid
-airflow/airflow-webserver.pid
-airflow/standalone_admin_password.txt
-airflow/airflow.cfg
-airflow/*.json.generated
+orchestration/logs/
+orchestration/*.db
+orchestration/*.pid
+orchestration/airflow-webserver.pid
+orchestration/standalone_admin_password.txt
+orchestration/airflow.cfg
+orchestration/*.json.generated

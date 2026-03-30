@@ -220,7 +220,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
       - `./run_ui.sh` (uses `uv run streamlit run` with file watching)
       - `streamlit run src/stock_prediction_ml/ui/app.py`
 
-12. **Orchestration** ([`airflow/dags/`](airflow/dags/))
+12. **Orchestration** ([`orchestration/dags/`](orchestration/dags/))
     - **Infrastructure**: Apache Airflow 3.1.7 with LocalExecutor, SQLite metadata DB
     - **DAGs** (4 production DAGs):
       - `ingestion_dag`: Daily 07:00 UTC — fetch EOD data (MarketStack), validate (Great Expectations), ingest to DB. Retries: 3/2/2 per task. Params: `tickers` (Mag-7 default)
@@ -228,7 +228,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
       - `training_dag`: Weekly Sundays 09:00 UTC — train CatBoost via Feast features, auto-promote champion/challenger. Params: `config_path`, `start_date`
       - `prediction_dag`: Daily 08:00 UTC (after ingestion) — materialize features, batch predict with champion model, persist to DB. Params: `tickers`
     - **All DAGs**: TaskFlow API (`@task.bash`), `catchup=False`, env vars from `Variable.get("project_root")`
-    - **Testing** ([`airflow/tests/`](airflow/tests/)): 5 test modules with session-scoped DagBag, mocked Variables, template rendering. Level 1 (DAG validation) + Level 2 (per-DAG structure, schedule, retries, params, env)
+    - **Testing** ([`orchestration/tests/`](orchestration/tests/)): 5 test modules with session-scoped DagBag, mocked Variables, template rendering. Level 1 (DAG validation) + Level 2 (per-DAG structure, schedule, retries, params, env)
     - **Setup**: [`setup_airflow.sh`](setup_airflow.sh) installs Airflow 3.1.7 with version-pinned constraints
 
 ### ❌ Not Started
@@ -270,11 +270,11 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`tests/test_ui.py`](tests/test_ui.py): UI logic, API client, and chart builder tests
 
 ### Orchestration
-- [`airflow/dags/ingestion_dag.py`](airflow/dags/ingestion_dag.py): Daily data ingestion pipeline
-- [`airflow/dags/feature_engineering_dag.py`](airflow/dags/feature_engineering_dag.py): Feature building and Feast materialization
-- [`airflow/dags/training_dag.py`](airflow/dags/training_dag.py): Weekly model training and promotion
-- [`airflow/dags/prediction_dag.py`](airflow/dags/prediction_dag.py): Daily batch predictions
-- [`airflow/tests/conftest.py`](airflow/tests/conftest.py): Shared fixtures with mocked Variables and template rendering
+- [`orchestration/dags/ingestion_dag.py`](orchestration/dags/ingestion_dag.py): Daily data ingestion pipeline
+- [`orchestration/dags/feature_engineering_dag.py`](orchestration/dags/feature_engineering_dag.py): Feature building and Feast materialization
+- [`orchestration/dags/training_dag.py`](orchestration/dags/training_dag.py): Weekly model training and promotion
+- [`orchestration/dags/prediction_dag.py`](orchestration/dags/prediction_dag.py): Daily batch predictions
+- [`orchestration/tests/conftest.py`](orchestration/tests/conftest.py): Shared fixtures with mocked Variables and template rendering
 
 ### Scripts
 - [`run_ui.sh`](run_ui.sh): Launch Streamlit with file watching via `uv run`
