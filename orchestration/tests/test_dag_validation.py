@@ -44,9 +44,9 @@ class TestDagLoading:
     def test_dag_has_tags(self, dag_bag, dag_id):
         """Every DAG should have at least one tag for UI filtering.
 
-        Hint: dag_bag.get_dag(dag_id).tags returns a set or list.
+        Hint: dag_bag.dags[dag_id].tags returns a set or list.
         """
-        tag_list = dag_bag.get_dag(dag_id).tags
+        tag_list = dag_bag.dags[dag_id].tags
 
         assert len(tag_list) > 0
 
@@ -54,8 +54,8 @@ class TestDagLoading:
     def test_catchup_disabled(self, dag_bag, dag_id):
         """Catchup should be False to prevent accidental backfill storms.
 
-        Hint: dag_bag.get_dag(dag_id).catchup is a bool.
+        Hint: dag_bag.dags[dag_id].catchup is a bool.
         """
-        catchup = dag_bag.get_dag(dag_id).catchup
+        catchup = dag_bag.dags[dag_id].catchup
 
         assert catchup is False

@@ -77,5 +77,8 @@ jobs:
           uv pip install "apache-airflow==3.1.7" pytest \
             --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.1.7/constraints-3.13.txt"
 
+      - name: Initialize Airflow DB
+        run: uv run airflow db migrate
+
       - name: Run Airflow tests
         run: uv run pytest orchestration/tests/ -v

@@ -55,7 +55,7 @@ def dag_bag() -> DagBag:
 @pytest.fixture(scope="session")
 def ingestion_dag(dag_bag: DagBag):
     """Return the parsed ingestion_dag."""
-    ingestion_dag = dag_bag.get_dag("ingestion_dag")
+    ingestion_dag = dag_bag.dags.get("ingestion_dag")
     assert ingestion_dag is not None
 
     return ingestion_dag
@@ -64,7 +64,7 @@ def ingestion_dag(dag_bag: DagBag):
 @pytest.fixture(scope="session")
 def feature_engineering_dag(dag_bag: DagBag):
     """Return the parsed feature_engineering_dag."""
-    feature_engineering_dag = dag_bag.get_dag("feature_engineering_dag")
+    feature_engineering_dag = dag_bag.dags.get("feature_engineering_dag")
     assert feature_engineering_dag is not None
 
     return feature_engineering_dag
@@ -73,7 +73,7 @@ def feature_engineering_dag(dag_bag: DagBag):
 @pytest.fixture(scope="session")
 def training_dag(dag_bag: DagBag):
     """Return the parsed training_dag."""
-    training_dag = dag_bag.get_dag("training_dag")
+    training_dag = dag_bag.dags.get("training_dag")
     assert training_dag is not None
 
     return training_dag
@@ -82,7 +82,7 @@ def training_dag(dag_bag: DagBag):
 @pytest.fixture(scope="session")
 def prediction_dag(dag_bag: DagBag):
     """Return the parsed prediction_dag."""
-    prediction_dag = dag_bag.get_dag("prediction_dag")
+    prediction_dag = dag_bag.dags.get("prediction_dag")
     assert prediction_dag is not None
 
     return prediction_dag
