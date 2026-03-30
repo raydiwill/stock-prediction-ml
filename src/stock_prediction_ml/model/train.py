@@ -998,7 +998,8 @@ if __name__ == "__main__":
         "--end-date",
         type=str,
         default=None,
-        help="Latest date to include in training data (YYYY-MM-DD). Omit to include up to latest available.",
+        help="Latest date to include in training data (YYYY-MM-DD). " \
+        "Omit to include up to latest available.",
     )
     args = parser.parse_args()
     main(args.config, start_date=args.start_date, end_date=args.end_date)

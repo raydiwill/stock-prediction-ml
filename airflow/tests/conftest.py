@@ -10,7 +10,7 @@ Why mock Variable.get?
 """
 
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -92,7 +92,7 @@ def prediction_dag(dag_bag: DagBag):
 # Rendered-task fixtures (template rendering needs DagRun + TaskInstance)
 # ---------------------------------------------------------------------------
 
-_LOGICAL_DATE = datetime(2025, 7, 1, tzinfo=timezone.utc)
+_LOGICAL_DATE = datetime(2025, 7, 1, tzinfo=UTC)
 
 
 def _render_dag_tasks(dag) -> dict[str, object]:
