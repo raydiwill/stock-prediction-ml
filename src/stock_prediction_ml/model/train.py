@@ -344,13 +344,13 @@ def load_training_data_from_feast(
 
     # Prepare entity for point-in-time Feast
     entity_df = raw_df[["symbol", "date"]].copy()
-    entity_df["date"] = pd.to_datetime(entity_df["date"])
+    entity_df["date"] = pd.to_datetime(entity_df["date"], utc=True)
 
     # Apply date filtering if provided
     if start_date is not None:
-        entity_df = entity_df[entity_df["date"] >= pd.to_datetime(start_date)]
+        entity_df = entity_df[entity_df["date"] >= pd.to_datetime(start_date, utc=True)]
     if end_date is not None:
-        entity_df = entity_df[entity_df["date"] <= pd.to_datetime(end_date)]
+        entity_df = entity_df[entity_df["date"] <= pd.to_datetime(end_date, utc=True)]
 
     if entity_df.empty:
         raise ValueError(

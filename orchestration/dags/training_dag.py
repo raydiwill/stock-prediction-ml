@@ -35,8 +35,8 @@ _ENV = {
             type="string",
         ),
         "start_date": Param(
-            default="",
-            type="string",
+            default=None,
+            type=["null", "string"],
             description=(
                 "Earliest training date (YYYY-MM-DD). "
                 "Leave empty to default to 180 days before execution date."
