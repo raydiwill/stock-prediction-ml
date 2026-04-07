@@ -22,8 +22,6 @@ class TestPredictionDagStructure:
 
     def test_dependency_chain(self, prediction_dag):
         """materialize_features → batch_predict.
-
-        Hint: same dict-of-dicts pattern as training_dag tests.
         """
         tasks_map = {task.task_id: task for task in prediction_dag.tasks}
 
@@ -53,10 +51,6 @@ class TestPredictionDagSchedule:
 
     def test_runs_after_ingestion(self, prediction_dag, ingestion_dag):
         """Prediction (08:00) should be scheduled after ingestion (07:00).
-
-        Hint: compare the hour in the cron expression against ingestion_dag's.
-              This is a "documentation test" — it won't catch drift automatically
-              but it encodes the intent.
         """
         pred_dag_cron = prediction_dag.timetable._expression
         ingest_dag_cron = ingestion_dag.timetable._expression
@@ -77,15 +71,11 @@ class TestPredictionDagRetries:
 
     def test_batch_predict_retries(self, prediction_dag):
         """batch_predict should retry (model serving can be flaky).
-
-        Hint: get_task() returns the task object; check .retries.
         """
         assert prediction_dag.get_task("batch_predict").retries == 2
 
     def test_materialize_no_extra_retries(self, prediction_dag):
         """materialize_features uses default retries (0).
-
-        Hint: tasks without explicit retries= get 0.
         """
         assert prediction_dag.get_task("materialize_features").retries == 0
 
@@ -99,8 +89,6 @@ class TestPredictionDagParams:
 
     def test_tickers_default_matches_ingestion(self, prediction_dag):
         """Default basket should be the same mag-7 list as ingestion_dag.
-
-        Hint: comparing sets avoids order sensitivity.
         """
         tickers = prediction_dag.params["tickers"]
         expected = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA"]
