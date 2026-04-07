@@ -493,6 +493,22 @@ Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker
 - **Scope**: Alert on pipeline failures, model promotion events, drift detection
 - **Integration point**: Airflow callbacks, Grafana alerting, or custom hooks
 
+#### Webhook/CI-triggered model redeployment — Zero-downtime champion promotion
+- **Problem**: Current approach requires manual API restart to pick up new champion model. No automated deployment workflow.
+- **Solution**: Add a final task in `training_dag` that triggers a redeployment after champion promotion, using webhook to fire a GitHub Actions workflow (or K8s rollout restart)
+- **Flow**:
+  1. `training_dag` trains and promotes new champion to MLflow Registry
+  2. Final task calls webhook (e.g., `POST` to GitHub Actions Dispatch API or K8s API)
+  3. CI/CD pipeline builds and deploys new container(s)
+  4. New FastAPI container starts → `lifespan()` loads champion from MLflow → zero downtime via rolling restart
+- **Implementation**:
+  - Add Airflow task using `BashOperator` or `PythonOperator` to call webhook endpoint
+  - Deploy FastAPI in Docker/K8s (see: containerization below)
+  - GitHub Actions workflow (`deploy.yml`) triggered by webhook, builds image and deploys
+  - OR Kubernetes: Use `kubectl rollout restart` directly from Airflow task
+- **Why production-grade**: Separates concerns (Airflow decides *what* to promote, CI/CD decides *how* to deploy). Enables zero-downtime updates and audit trail of deployments.
+- **When to add**: After Docker containerization + K8s deployment infrastructure are in place (post-monitoring phase)
+
 #### direnv — Per-project AIRFLOW_HOME
 - **Problem**: `orchestration/airflow.cfg` has hardcoded absolute paths (dags_folder, sql_alchemy_conn, logs, etc.) tied to this machine — not portable and won't scale to multiple Airflow projects
 - **Solution**: Use `direnv` (`brew install direnv`) with a `.envrc` file in the project root to auto-set `AIRFLOW_HOME=orchestration` when entering the directory

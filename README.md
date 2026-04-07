@@ -34,6 +34,21 @@
 
 ---
 
+## Architecture
+
+![Architecture Diagram](architecture.svg)
+
+The system is organized into four layers:
+
+| Layer | Components |
+|-------|-----------|
+| **Orchestration** | Apache Airflow (4 DAGs: ingestion, features, training, prediction) |
+| **ML Pipeline** | Data Ingestion → Great Expectations Validation → Feature Engineering → Model Training |
+| **Storage & Management** | Parquet Files, SQLite DB, Feast Feature Store, MLflow Model Registry |
+| **Serving & UI** | FastAPI REST API → Streamlit Dashboard |
+
+---
+
 ## Introduction
 
 A **portfolio project** demonstrating production ML practices for financial time-series prediction.

@@ -12,17 +12,12 @@ class TestTrainingDagStructure:
 
     def test_task_ids(self, training_dag):
         """Task IDs: train_model, promote_model.
-
-        Hint: {t.task_id for t in training_dag.tasks}
         """
         tasks = {task.task_id for task in training_dag.tasks}
         assert tasks == {"train_model", "promote_model"}
 
     def test_dependency_chain(self, training_dag):
         """train_model → promote_model.
-
-        Hint: promote_model.upstream_task_ids should be {"train_model"}.
-        train_model should have no upstream.
         """
         tasks_map = {task.task_id: task for task in training_dag.tasks}
 
@@ -41,8 +36,6 @@ class TestTrainingDagSchedule:
 
     def test_weekly_schedule(self, training_dag):
         """Schedule should be a CronTriggerTimetable (weekly).
-
-        Hint: isinstance(training_dag.timetable, CronTriggerTimetable)
         """
         assert isinstance(training_dag.timetable, CronTriggerTimetable)
 
@@ -59,17 +52,13 @@ class TestTrainingDagParams:
 
     def test_start_date_param_exists(self, training_dag):
         """Should have a start_date param for training window control.
-
-        Hint: "start_date" in training_dag.params
         """
         assert "start_date" in training_dag.params
 
-    def test_start_date_default_is_empty(self, training_dag):
-        """start_date default should be empty string (falls back to ds-180 in template).
-
-        Hint: training_dag.params["start_date"].default == ""
+    def test_start_date_default_is_none(self, training_dag):
+        """start_date default should be None (optional; falls back to ds-180 in template).
         """
-        assert training_dag.params["start_date"] == ""
+        assert training_dag.params["start_date"] is None
 
 
 class TestTrainingDagEnv:
@@ -77,10 +66,6 @@ class TestTrainingDagEnv:
 
     def test_env_uses_project_root(self, rendered_training_tasks):
         """Task env should reference '/app' in both PYTHONPATH and PATH.
-
-        Hint: iterate training_dag.tasks, check task.env dict.
-        PYTHONPATH should contain '/app/src'.
-        PATH should contain '/app/.venv/bin'.
         """
         for task in rendered_training_tasks.values():
             assert task.env["PYTHONPATH"] == '/app/src'
