@@ -7,8 +7,14 @@ Why mock Variable.get?
     feature_engineering_dag.py and training_dag.py call Variable.get()
     at **module level** (import time). Without the mock, DagBag will
     try to hit the metadata DB and crash.
+
+Why initialize the DB here?
+    render_templates() internally queries the dag_run table. CI runs
+    `airflow db migrate` before pytest; locally that step is often skipped.
+    Forcing an in-memory DB + migration makes the suite self-contained.
 """
 
+import os
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +26,22 @@ from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunType
 
 DAGS_DIR = str(Path(__file__).parent.parent / "dags")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _airflow_db():
+    """Initialize an in-memory Airflow metadata DB for the test session.
+
+    This mirrors the `airflow db migrate` step in CI and ensures tests are
+    self-contained regardless of local Airflow state.
+    """
+    os.environ.setdefault(
+        "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "sqlite:///:memory:"
+    )
+    from airflow.utils.db import initdb  # noqa: PLC0415
+
+    initdb()
+
 
 # Add new Variables here as your DAGs evolve.
 _VARIABLE_DEFAULTS: dict[str, str] = {
