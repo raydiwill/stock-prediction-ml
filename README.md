@@ -34,6 +34,14 @@
 
 ---
 
+## Demo
+
+[![SignalForge Demo](https://img.youtube.com/vi/02_BGvxwVms/maxresdefault.jpg)](https://www.youtube.com/watch?v=02_BGvxwVms)
+
+> ⚠️ Text overlays and captions coming soon. Live demo site in progress.
+
+---
+
 ## Architecture
 
 ![Architecture Diagram](architecture.svg)
