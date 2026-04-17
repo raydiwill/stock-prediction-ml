@@ -30,11 +30,15 @@ mlruns/
 # Airflow
 orchestration/logs/
 orchestration/*.db
+orchestration/*.db-shm
+orchestration/*.db-wal
 orchestration/*.pid
 orchestration/airflow-webserver.pid
 orchestration/standalone_admin_password.txt
 orchestration/airflow.cfg
+orchestration/airflow.cfg.template
 orchestration/*.json.generated
+orchestration/logs/
 
 # DB
 *.db
