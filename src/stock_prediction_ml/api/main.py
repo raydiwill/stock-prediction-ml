@@ -88,25 +88,6 @@ MODEL_VERSION = None
 MLFLOW_CLIENT = None  # MlflowClient instance for registry queries
 
 
-def validate_startup() -> None:
-    """Validate critical dependencies are loaded.
-
-    Raises:
-        RuntimeError: If any critical dependency failed to load.
-    """
-    missing = []
-    if MODEL is None:
-        missing.append("MODEL")
-    if FEAST_STORE is None:
-        missing.append("FEAST_STORE")
-
-    if missing:
-        raise RuntimeError(
-            f"Failed to load critical dependencies: {', '.join(missing)}. "
-            "API cannot start without these."
-        )
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage API startup and shutdown lifecycle.
@@ -168,13 +149,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to get model version: {e}")
         MODEL_VERSION = "unknown"
-
-    # Validate startup - fail fast if critical deps missing
-    try:
-        validate_startup()
-    except RuntimeError as e:
-        logger.critical(str(e))
-        raise
 
     logger.info("=" * 60)
     logger.info("API startup complete!")
