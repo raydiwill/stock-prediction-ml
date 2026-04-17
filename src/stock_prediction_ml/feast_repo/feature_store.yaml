@@ -2,14 +2,14 @@ project: stock_prediction_ml
 provider: local
 
 registry:
-  type: sql
-  path: ../../../data/feast/registry.db
+  registry_type: sql
+  path: ${FEAST_REGISTRY_URL}
 
 offline_store:
   type: file
 
 online_store:
-  type: sqlite
-  path: ../../../data/feast/online_store.db
+  type: redis
+  connection_string: "${FEAST_REDIS_CONNECTION_STRING}"
 
 entity_key_serialization_version: 3
