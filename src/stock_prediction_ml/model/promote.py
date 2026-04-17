@@ -275,6 +275,19 @@ def main() -> None:
     client = MlflowClient()
     model_name = args.model_name or settings.registered_model_name
 
+    # Resolve experiment name: config file > settings default
+    experiment_name = settings.default_experiment_name
+    if args.config:
+        config_path = Path(args.config)
+        with open(config_path) as f:
+            raw_config = yaml.safe_load(f)
+        experiment_name = raw_config.get("mlflow", {}).get(
+            "experiment_name", experiment_name
+        )
+        model_name = args.model_name or raw_config.get("mlflow", {}).get(
+            "registered_model_name", model_name
+        )
+
     # Resolve version: explicit arg or latest from experiment
     if args.version:
         version = args.version
@@ -283,7 +296,7 @@ def main() -> None:
         logger.info("No version specified, resolving latest from experiment")
         version = get_latest_version_from_experiment(
             client,
-            settings.default_experiment_name,
+            experiment_name,
             model_name,
         )
 
