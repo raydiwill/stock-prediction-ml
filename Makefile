@@ -1,4 +1,4 @@
-COMPOSE_DEV := docker compose -f docker-compose.dev.yml
+COMPOSE_DEV := docker compose -f docker-compose.dev.yml --env-file configs/config.env.dev
 TRAIN_START_DATE ?= $(shell date -v-6m +%Y-%m-%d 2>/dev/null || date -d "-6 months" +%Y-%m-%d)
 API_CONTAINER_DEV := stock-prediction-fastapi-dev
 API_CONTAINER_PROD := stock-prediction-fastapi-prod
