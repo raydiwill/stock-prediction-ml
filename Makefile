@@ -76,15 +76,14 @@ airflow-up:
 	@echo "==> Init airflow"
 	$(COMPOSE_DEV) --profile airflow up -d --build --wait
 	@echo "==> Airflow UI: http://localhost:8080"
-	@until docker logs stock-prediction-airflow-dev 2>&1 | grep -q "Password for user"; do sleep 2; done
-	@docker logs stock-prediction-airflow-dev 2>&1 | grep "Password for user" || true
+	@$(MAKE) airflow-password
 
 airflow-down:
 	$(COMPOSE_DEV) stop airflow airflow-init
 	$(COMPOSE_DEV) rm -f airflow-init
 
 airflow-password:
-	@docker logs stock-prediction-airflow-dev 2>&1 | grep "Password for user" || true
+	@grep AIRFLOW_ADMIN configs/config.env.dev
 
 grafana-password:
 	@grep GRAFANA_ADMIN configs/config.env.dev
