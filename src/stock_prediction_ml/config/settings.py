@@ -1,28 +1,24 @@
 import os
-from pathlib import Path
 
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_ENV_FILE = PROJECT_ROOT / "configs" / "config.env.local"
-
 
 class Settings(BaseSettings):
-    # Default settings for local def
+    # Required
 
-    database_url: str = f"sqlite:///{str(PROJECT_ROOT)}/dev.db"
+    database_url: str
+    mlflow_tracking_uri: str
+    marketstack_api_key: str
+    api_host: str
+    api_port: int
 
-    mlflow_tracking_uri: str = f"sqlite:///{str(PROJECT_ROOT)}/mlflow.db"
-
-    marketstack_api_key: str | None = None
-
-    api_host: str = "127.0.0.1"
-    api_port: int = 8000
-    api_log_level: str = "debug"
-    api_reload: bool = True
+    # Optional
+    # API
+    api_log_level: str = "info"
+    api_reload: bool = False
 
     # Serving model
     model_name: str = "catboost_model"
@@ -41,15 +37,12 @@ class Settings(BaseSettings):
     # Supported stock symbols
     valid_symbols: list[str] = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA"]
 
-    cors_origins: str = "*"
-
-    @property
-    def split_cors_origins_to_list(self) -> list[str]:
-        """Conver cors_origin string to list for FastAPI"""
-        return [origin.strip() for origin in self.cors_origins.split(",")]
+    cors_origins: list[str]
 
     model_config = SettingsConfigDict(
-        env_file=os.getenv("ENV_FILE", str(DEFAULT_ENV_FILE)), env_file_encoding="utf_8"
+        env_file=os.getenv("ENV_FILE", "configs/config.env.dev"),
+        env_file_encoding="utf-8",
+        extra="ignore",  # don't crash if env has unrelated vars
     )
 
 

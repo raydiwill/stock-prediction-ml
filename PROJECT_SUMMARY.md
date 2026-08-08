@@ -160,7 +160,7 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
     - **Lifecycle Management** (`lifespan` function):
       - Startup: Loads champion model from MLflow Registry (`models:/stock_prediction_classifier@champion`)
       - Startup: Initializes Feast FeatureStore with registry cache pre-warming
-      - Startup: Validates critical dependencies (fail-fast on missing deps via `validate_startup()`)
+      - Startup: Gracefully handles unhealthy dependencies (returns 503 Service Unavailable)
       - Shutdown: Clean exit logging
     - **Endpoints**:
       - `GET /health`: Returns model/Feast availability status and model version
@@ -180,10 +180,10 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
       - CORS enabled for configurable origins (default: all)
       - Request logging middleware tracking method, path, status, and latency
     - **Configuration** ([`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py)):
-      - Centralized settings for model name, alias, Feast service, int columns
+      - Centralized settings loaded from env vars (required: database_url, mlflow_tracking_uri, api_host, api_port, cors_origins)
       - `valid_symbols`: Allowed stock tickers for request validation
-      - `cors_origins`: Configurable CORS with `split_cors_origins_to_list` property
-      - All hardcoded constants migrated to `settings` object
+      - `cors_origins`: Configurable CORS origins (list format, default matches request origin or wildcard)
+      - All hardcoded constants migrated to settings object
     - **Schema definitions** ([`src/stock_prediction_ml/api/schema.py`](src/stock_prediction_ml/api/schema.py)):
       - `StockRequest` / `PredictionResponse`: Predict endpoint models
       - `HealthResponse`: Health check status
@@ -462,8 +462,11 @@ Feature vector (34 features after encoding `symbol`):
 - **Production Feast tests**: Add integration tests using production feature store (not temp fixtures)
 - **Incremental materialization**: Implement daily `materialize-incremental` workflow for feature updates
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
-- **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
+- **Monitoring**: Grafana/Prometheus pull model for API metrics (no Pushgateway needed yet—batch job push metrics deferred until Airflow DAGs expose metrics endpoints)
 - **Containerization**: Docker Compose for local dev and production deployment
+  - Dev: `docker-compose.dev.yml` — bind-mount source code for fast iteration
+  - Prod: `docker-compose.prod.yml` — baked-into image, isolated networks, no host dev ports
+  - Future: Staging environment with own config, network isolation, staging-specific metrics
 
 ### Future improvements (post-production)
 Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker/K8s) is stable.

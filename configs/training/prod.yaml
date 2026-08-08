@@ -1,0 +1,32 @@
+training_data_path: data/feature/stock_eod_features.parquet
+selected_features_path: data/meta/selected_features.json
+meta_dir: data/meta
+model_dir: models
+feast_service_name: stock_training_service
+
+target: 'target'
+test_size: 0.1
+random_state: 42
+
+model_params:
+  iterations: 539
+  depth: 9
+  learning_rate: 0.14667195461639018
+  l2_leaf_reg: 5.0152300454458905
+  random_strength: 12.61739742270242
+  bagging_temperature: 1.7613540779077792
+
+output_model_path: models/catboost_model.cbm
+
+mlflow:
+  experiment_name: Stock_Prediction_Experiment_Prod
+  run_name: Stock_Prediction_Run_Prod
+  registered_model_name: stock_prediction_classifier
+
+promotion:
+  champion:
+    accuracy: 0.65
+    auc: 0.70
+  challenger:
+    accuracy: 0.60
+    auc: 0.65

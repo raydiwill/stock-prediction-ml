@@ -42,6 +42,11 @@ jobs:
       - name: Run tests
         env:
           MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
+          DATABASE_URL: "sqlite:///./ci.db"
+          MLFLOW_TRACKING_URI: "sqlite:///./ci-mlflow.db"
+          API_HOST: "127.0.0.1"
+          API_PORT: "8000"
+          CORS_ORIGINS: '["*"]'
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "Running full test suite (including slow tests)"
