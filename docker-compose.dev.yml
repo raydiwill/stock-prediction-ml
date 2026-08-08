@@ -161,9 +161,35 @@ services:
 
     command: airflow standalone
 
+  grafana:
+    <<: *common-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+    image: grafana/grafana:13.0-slim
+    container_name: stock-prediction-grafana-dev
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
 volumes:
   postgresql_data:
   mlflow-data:
   redis-data:
   data:
   airflow-logs:
+  grafana-data:
