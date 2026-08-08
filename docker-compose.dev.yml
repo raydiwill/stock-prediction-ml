@@ -128,8 +128,22 @@ services:
       db:
         condition: service_healthy
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/airflow
-    command: bash -c "airflow db migrate && airflow variables set project_root /usr/local/app"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/airflow
+      ENV_FILE: configs/config.env.dev
+    command: >
+      bash -c "
+      airflow db migrate &&
+      (airflow users create \
+          --username $$AIRFLOW_ADMIN_USERNAME \
+          --firstname Raydi \
+          --lastname Tran \
+          --role Admin \
+          --email $$AIRFLOW_ADMIN_EMAIL \
+          --password $$AIRFLOW_ADMIN_PASSWORD || true) &&
+      airflow variables set project_root /usr/local/app
+      "
 
   airflow:
     <<: *common-env
@@ -148,9 +162,10 @@ services:
     profiles: ["airflow"]
 
     environment:
-      AIRFLOW__SIMPLE_AUTH_MANAGER__ALL_PASSWORDLESS: "true"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       ENV_FILE: configs/config.env.dev
 
@@ -163,7 +178,18 @@ services:
     ports:
       - "8080:8080"
 
-    command: airflow standalone
+    # db migrate / users create already handled by airflow-init (one-time
+    # setup this service depends_on: service_completed_successfully).
+    # Each of these is a long-running process, so background them and
+    # `wait -n` so the container exits (and gets restarted) if any one dies.
+    command: >
+      bash -c "
+      airflow api-server --port 8080 &
+      airflow scheduler &
+      airflow dag-processor &
+      airflow triggerer &
+      wait -n
+      "
 
   grafana:
     <<: *common-env
