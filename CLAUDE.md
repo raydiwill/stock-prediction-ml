@@ -21,7 +21,7 @@ pytest -v -m "not slow"
 pytest tests/test_api.py -v
 
 # Start Docker dev stack
-make up
+make up-dev
 
 # First-time: train model + materialize features
 make init
@@ -35,8 +35,8 @@ make shell
 # Optional: start Airflow
 make airflow-up
 
-# Stop stack
-make down
+# Stop dev stack
+make down-dev
 ```
 
 ## Current Focus

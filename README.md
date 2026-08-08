@@ -178,6 +178,10 @@ A **portfolio project** demonstrating production ML practices for financial time
 
 ### Quick Start (Docker)
 
+**Prerequisites:**
+- Copy environment files: `cp configs/config.env.example configs/config.env.dev`
+- Update `configs/config.env.dev` with your MarketStack API key
+
 **First time:**
 ```bash
 # Clone the repo
@@ -185,16 +189,28 @@ git clone https://github.com/raydiwill/stock-prediction-ml.git
 cd stock-prediction-ml
 
 # Start core stack (db, mlflow, api, ui)
-make up
+make up-dev
 
-# Train model + materialize features (first-time setup only)
+# Train model + materialize features (one-time setup)
 make init
 ```
 
 **Returning:**
 ```bash
 # Core stack is already initialized — just start it
-make up
+make up-dev
+```
+
+**Development Workflow:**
+```bash
+# View logs
+make logs
+
+# Shell access to API container
+make shell
+
+# Stop core stack
+make down-dev
 ```
 
 **Airflow (optional):**
@@ -205,21 +221,39 @@ make airflow-up
 # Credentials are printed automatically on startup
 # Or retrieve anytime with:
 make airflow-password
+
+# Stop Airflow only (leaves core stack running)
+make airflow-down
 ```
 
-**Tear down:**
+**Production Deployment:**
 ```bash
-make down           # stops core stack
-make airflow-down   # stops Airflow only (leaves core stack running)
+# Copy and configure prod environment
+cp configs/config.env.prod.example configs/config.env.prod
+# Edit configs/config.env.prod with real credentials
+
+# Start production stack (no bind-mounts, no dev ports)
+make up-prod
+
+# One-time: train model and materialize features
+make init-prod
 ```
 
-**Services:**
+**Services (Dev):**
 | Service | URL |
 |---------|-----|
 | FastAPI | http://localhost:8000 |
 | Streamlit UI | http://localhost:8501 |
 | MLflow | http://localhost:5001 |
 | Airflow | http://localhost:8080 |
+
+**Services (Prod):**
+| Service | Port |
+|---------|------|
+| FastAPI | 9000 |
+| Streamlit UI | 9501 |
+| MLflow | internal-only |
+| Airflow | 9080 |
 
 ---
 
