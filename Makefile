@@ -1,14 +1,27 @@
-COMPOSE := docker compose -f docker-compose.dev.yml
+COMPOSE_DEV := docker compose -f docker-compose.dev.yml
 TRAIN_START_DATE ?= $(shell date -v-6m +%Y-%m-%d 2>/dev/null || date -d "-6 months" +%Y-%m-%d)
 API_CONTAINER := stock-prediction-fastapi
 
-.PHONY: up down init logs shell airflow-up airflow-down airflow-password
+COMPOSE_PROD := docker compose -f docker-compose.prod.yml --env-file configs/config.env.prod
 
-up:
-	$(COMPOSE) up -d --build --wait
+.PHONY: up-dev down-dev init logs shell airflow-up airflow-down airflow-password up-prod down-prod
 
-down:
-	$(COMPOSE) down
+up-dev:
+	$(COMPOSE_DEV) up -d --build --wait
+
+down-dev:
+	$(COMPOSE_DEV) down
+
+up-prod:
+	@echo "==> Stopping dev environment (container names/ports collide with prod)"
+	$(COMPOSE_DEV) down
+	@echo "==> Starting production environment"
+	$(COMPOSE_PROD) up -d --build --wait
+	@echo "==> Production environment is running"
+
+down-prod:
+	@echo "==> Stopping production environment"
+	$(COMPOSE_PROD) down
 
 init:
 	@echo "==> feast apply"
