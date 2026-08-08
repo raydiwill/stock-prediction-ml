@@ -464,6 +464,7 @@ Feature vector (34 features after encoding `symbol`):
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
 - **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
 - **Containerization**: Docker Compose for local dev and production deployment
+- **Dev/prod container isolation**: `docker-compose.dev.yml` and `docker-compose.prod.yml` currently reuse identical `container_name`s (e.g. `stock-prediction-db`, `stock-prediction-fastapi`), so both stacks can't run concurrently — `make up-prod` force-stops dev first. Once all components are stable, differentiate names (e.g. `-dev`/`-prod` suffixes) and host ports so environments can coexist, and add a `docker-compose.staging.yml` following the same pattern (own env file under `configs/`, own Makefile targets `up-staging`/`down-staging`)
 
 ### Future improvements (post-production)
 Ideas for enhancing the project once the core pipeline (Airflow, Grafana, Docker/K8s) is stable.
