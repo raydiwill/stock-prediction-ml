@@ -235,6 +235,9 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 1. **Monitoring**: Grafana dashboards for drift detection and performance tracking
 2. **Deployment**: Docker containerization, model serving infrastructure
 
+### 🔮 Future improvements
+- **Local vs. Cloud dev separation**: Currently, `docker-compose.dev.yml` is used for both local development and cloud dev environments. Future: create a separate `docker-compose.local.yml` with zero-auth services (Grafana anonymous Admin, no login forms) for friction-free local dev, keeping `dev.yml` for shared cloud dev with credentials and proper auth separation (admin login, configured datasources).
+
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
 - **Reproducibility**: Fixed random seeds, MLflow tracking, synthetic test fixtures
