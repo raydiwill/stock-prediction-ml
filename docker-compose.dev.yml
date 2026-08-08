@@ -78,6 +78,7 @@ services:
       - configs/config.env.dev
     environment:
       PYTHONPATH: /usr/local/app/src
+      ENV_FILE: configs/config.env.dev
     ports:
       - "8000:8000"
     restart: "no"
@@ -101,6 +102,7 @@ services:
     environment:
       PYTHONPATH: /usr/local/app/src
       API_HOST: api
+      ENV_FILE: configs/config.env.dev
     ports:
       - "8501:8501"
     restart: "no"
@@ -139,6 +141,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://user:pass@db:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      ENV_FILE: configs/config.env.dev
 
     volumes:
       - ./orchestration/dags:/opt/airflow/dags
