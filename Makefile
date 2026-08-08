@@ -5,12 +5,12 @@ API_CONTAINER_PROD := stock-prediction-fastapi-prod
 
 COMPOSE_PROD := docker compose -f docker-compose.prod.yml --env-file configs/config.env.prod
 
-.PHONY: up-dev down-dev init logs shell airflow-up airflow-down airflow-password up-prod down-prod init-prod
+.PHONY: up down init logs shell airflow-up airflow-down airflow-password up-prod down-prod init-prod
 
-up-dev:
+up:
 	$(COMPOSE_DEV) up -d --build --wait
 
-down-dev:
+down:
 	$(COMPOSE_DEV) down
 
 up-prod:

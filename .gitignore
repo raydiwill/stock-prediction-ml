@@ -15,8 +15,10 @@ wheels/
 # macOS DS_Store files
 .DS_Store
 
-# Environment variables file
-config.env.*
+# Environment variables file (actual values are gitignored, examples are tracked)
+config.env.dev
+config.env.prod
+config.env.local*
 
 # Data folder
 data/

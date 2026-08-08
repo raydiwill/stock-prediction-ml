@@ -20,24 +20,23 @@ pytest -v -m "not slow"
 # Run specific test file
 pytest tests/test_api.py -v
 
-# Start API server
-uvicorn src.stock_prediction_ml.api.main:app --reload
+# Start Docker dev stack
+make up
 
-# Start Streamlit UI (requires API server running)
-./run_ui.sh
-# or: streamlit run src/stock_prediction_ml/ui/app.py
+# First-time: train model + materialize features
+make init
 
-# Apply Feast feature definitions
-cd src/stock_prediction_ml/feast_repo && feast apply
+# View API/UI logs
+make logs
 
-# Materialize features to online store
-feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)
+# Bash access to API container
+make shell
 
-# Run Airflow DAG tests
-pytest orchestration/tests/ -v
+# Optional: start Airflow
+make airflow-up
 
-# Start Airflow (local dev)
-AIRFLOW_HOME=orchestration airflow standalone
+# Stop stack
+make down
 ```
 
 ## Current Focus
@@ -45,7 +44,6 @@ AIRFLOW_HOME=orchestration airflow standalone
 **Next Tasks**:
 - **Logging**: Switch from stdlib `logging` to `loguru` — simpler API, no handler boilerplate, immune to Alembic's `disable_existing_loggers`
 - **Monitoring**: Grafana/Prometheus for drift detection
-- **Deployment**: Docker containerization
 
 ## Code Style
 
