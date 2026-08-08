@@ -98,7 +98,11 @@ services:
     container_name: stock-prediction-fastapi
 
     # No ./src or ./configs bind mounts — prod runs off what's baked into
-    # the image at build time, not live host files.
+    # the image at build time, not live host files. ./data is mounted
+    # (same as dev) since feature data isn't baked into the image and
+    # ingestion/materialization write to it at runtime.
+    volumes:
+      - ./data:/usr/local/app/data
 
     networks:
       - isolated
