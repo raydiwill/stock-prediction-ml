@@ -1,3 +1,5 @@
+name: stock-prediction-prod
+
 x-common-env: &common-env
   env_file:
     - configs/config.env.prod
@@ -5,7 +7,7 @@ x-common-env: &common-env
 services:
   db:
     image: postgres:16-alpine
-    container_name: stock-prediction-db
+    container_name: stock-prediction-db-prod
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -34,7 +36,7 @@ services:
       db:
         condition: service_healthy
     image: ghcr.io/mlflow/mlflow:v3.6.0
-    container_name: stock-prediction-mlflow
+    container_name: stock-prediction-mlflow-prod
 
     # Internal-only, same as db/redis — nothing outside the compose network
     # needs to browse the MLflow UI directly.
@@ -65,7 +67,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: stock-prediction-redis
+    container_name: stock-prediction-redis-prod
 
     # No host port publish — internal only.
     networks:
@@ -95,7 +97,7 @@ services:
       context: .
       target: api
 
-    container_name: stock-prediction-fastapi
+    container_name: stock-prediction-fastapi-prod
 
     # No ./src or ./configs bind mounts — prod runs off what's baked into
     # the image at build time, not live host files. ./data is mounted
@@ -112,7 +114,7 @@ services:
       PYTHONPATH: /usr/local/app/src
       ENV_FILE: configs/config.env.prod
     ports:
-      - "8000:8000"
+      - "9000:8000"
     restart: unless-stopped
 
   ui:
@@ -125,7 +127,7 @@ services:
       context: .
       target: ui
 
-    container_name: stock-prediction-uis
+    container_name: stock-prediction-uis-prod
 
     # No bind mounts, same reasoning as api.
 
@@ -138,7 +140,7 @@ services:
       API_HOST: api
       ENV_FILE: configs/config.env.prod
     ports:
-      - "8501:8501"
+      - "9501:8501"
     restart: unless-stopped
     command: streamlit run src/stock_prediction_ml/ui/app.py --server.port=8501 --server.address=0.0.0.0
 
@@ -147,6 +149,7 @@ services:
     build:
       context: .
       target: airflow
+    container_name: stock-prediction-airflow-init-prod
     profiles: ["airflow"]
     restart: "no"
     depends_on:
@@ -184,6 +187,8 @@ services:
       context: .
       target: airflow
 
+    container_name: stock-prediction-airflow-prod
+
     profiles: ["airflow"]
     networks:
       - isolated
@@ -206,7 +211,7 @@ services:
       - airflow-logs:/opt/airflow/logs
 
     ports:
-      - "8080:8080"
+      - "9080:8080"
 
     # db migrate / users create already handled by airflow-init (one-time
     # setup this service depends_on: service_completed_successfully).

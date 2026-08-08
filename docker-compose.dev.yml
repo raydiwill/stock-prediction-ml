@@ -1,3 +1,5 @@
+name: stock-prediction-dev
+
 x-common-env: &common-env
   env_file:
     - configs/config.env.dev
@@ -5,7 +7,7 @@ x-common-env: &common-env
 services:
   db:
     image: postgres:16-alpine
-    container_name: stock-prediction-db
+    container_name: stock-prediction-db-dev
     environment:
       POSTGRES_DB: dev
       POSTGRES_USER: user
@@ -30,7 +32,7 @@ services:
         condition: service_healthy
     image: ghcr.io/mlflow/mlflow:v3.6.0
 
-    container_name: stock-prediction-mlflow
+    container_name: stock-prediction-mlflow-dev
     ports:
       - "5001:5000"
     volumes:
@@ -47,7 +49,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: stock-prediction-redis
+    container_name: stock-prediction-redis-dev
     ports:
       - "6379:6379"
 
@@ -73,7 +75,7 @@ services:
       context: .
       target: api
 
-    container_name: stock-prediction-fastapi
+    container_name: stock-prediction-fastapi-dev
     volumes:
       - ./src:/usr/local/app/src
       - ./data:/usr/local/app/data
@@ -97,7 +99,7 @@ services:
       context: .
       target: ui
 
-    container_name: stock-prediction-uis
+    container_name: stock-prediction-uis-dev
     volumes:
       - ./src:/usr/local/app/src
       - ./configs:/usr/local/app/configs
@@ -115,6 +117,7 @@ services:
     build:
       context: .
       target: airflow
+    container_name: stock-prediction-airflow-init-dev
     profiles: ["airflow"]
     restart: "no"
     depends_on:
@@ -135,6 +138,8 @@ services:
     build:
       context: .
       target: airflow
+
+    container_name: stock-prediction-airflow-dev
 
     profiles: ["airflow"]
 
