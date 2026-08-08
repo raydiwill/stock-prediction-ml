@@ -1,0 +1,238 @@
+name: stock-prediction-prod
+
+x-common-env: &common-env
+  env_file:
+    - configs/config.env.prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: stock-prediction-db-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    # No host port publish — db is only reachable on the compose-internal
+    # network by other services.
+
+    networks:
+      - isolated
+
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+  mlflow:
+    depends_on:
+      db:
+        condition: service_healthy
+    image: ghcr.io/mlflow/mlflow:v3.6.0
+    container_name: stock-prediction-mlflow-prod
+
+    # Internal-only, same as db/redis — nothing outside the compose network
+    # needs to browse the MLflow UI directly.
+    #
+    # Needs "public" too: the base image doesn't bundle psycopg2, so the
+    # command below installs it at startup, which requires internet egress.
+    networks:
+      - isolated
+      - public
+
+    volumes:
+      - mlflow-data:/mlflow
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    command: sh -c "pip install psycopg2-binary && mlflow server --backend-store-uri postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination /mlflow/artifacts --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
+
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: stock-prediction-redis-prod
+
+    # No host port publish — internal only.
+    networks:
+      - isolated
+
+    volumes:
+      - redis-data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    restart: unless-stopped
+
+  api:
+    <<: *common-env
+    depends_on:
+      db:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    build:
+      context: .
+      target: api
+
+    container_name: stock-prediction-fastapi-prod
+
+    # No ./src or ./configs bind mounts — prod runs off what's baked into
+    # the image at build time, not live host files. ./data is mounted
+    # (same as dev) since feature data isn't baked into the image and
+    # ingestion/materialization write to it at runtime.
+    volumes:
+      - ./data:/usr/local/app/data
+
+    networks:
+      - isolated
+      - public
+
+    environment:
+      PYTHONPATH: /usr/local/app/src
+      ENV_FILE: configs/config.env.prod
+    ports:
+      - "9000:8000"
+    restart: unless-stopped
+
+  ui:
+    <<: *common-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+    build:
+      context: .
+      target: ui
+
+    container_name: stock-prediction-uis-prod
+
+    # No bind mounts, same reasoning as api.
+
+    networks:
+      - isolated
+      - public
+
+    environment:
+      PYTHONPATH: /usr/local/app/src
+      API_HOST: api
+      ENV_FILE: configs/config.env.prod
+    ports:
+      - "9501:8501"
+    restart: unless-stopped
+    command: streamlit run src/stock_prediction_ml/ui/app.py --server.port=8501 --server.address=0.0.0.0
+
+  airflow-init:
+    <<: *common-env
+    build:
+      context: .
+      target: airflow
+    container_name: stock-prediction-airflow-init-prod
+    profiles: ["airflow"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - isolated
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
+      ENV_FILE: configs/config.env.prod
+    command: >
+      bash -c "
+      airflow db migrate &&
+      (airflow users create \
+          --username $AIRFLOW_ADMIN_USERNAME \
+          --firstname Raydi \
+          --lastname Tran \
+          --role Admin \
+          --email $AIRFLOW_ADMIN_EMAIL \
+          --password $AIRFLOW_ADMIN_PASSWORD || true) &&
+      airflow variables set project_root /usr/local/app
+      "
+
+  airflow:
+    <<: *common-env
+    depends_on:
+      db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+    build:
+      context: .
+      target: airflow
+
+    container_name: stock-prediction-airflow-prod
+
+    profiles: ["airflow"]
+    networks:
+      - isolated
+      - public
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # ALL_PASSWORDLESS dropped — that's a dev-only shortcut. Real users
+      # are provisioned by airflow-init instead. LocalExecutor is fine to
+      # keep for a single-box setup.
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      ENV_FILE: configs/config.env.prod
+
+    volumes:
+      # No ./orchestration/dags or ./src bind mounts — DAGs and app code
+      # are baked into the image at build time (Dockerfile COPYs both),
+      # same reasoning as api/ui.
+      - airflow-logs:/opt/airflow/logs
+
+    ports:
+      - "9080:8080"
+
+    # db migrate / users create already handled by airflow-init (one-time
+    # setup this service depends_on: service_completed_successfully).
+    # Each of these is a long-running process, so background them and
+    # `wait -n` so the container exits (and gets restarted) if any one dies.
+    command: >
+      bash -c "
+      airflow api-server --port 8080 &
+      airflow scheduler &
+      airflow dag-processor &
+      airflow triggerer &
+      wait -n
+      "
+
+volumes:
+  postgresql_data:
+  mlflow-data:
+  redis-data:
+  airflow-logs:
+
+networks:
+  isolated:
+    internal: true   # No external connectivity
+  public:   # Standard bridge network, created by Compose on docker compose up

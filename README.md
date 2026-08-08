@@ -16,7 +16,7 @@
 
 **Current Stage**: Full ML pipeline with REST API, Streamlit dashboard, Airflow orchestration, and comprehensive test suite.
 
-**Next Step**: Monitoring (Grafana/Prometheus) and Docker containerization.
+**Next Step**: Monitoring (Grafana/Prometheus).
 
 | Component | Status |
 |-----------|--------|
@@ -29,8 +29,8 @@
 | Streamlit UI | ✅ Complete |
 | Testing (80+ tests) | ✅ Complete |
 | Airflow Orchestration | ✅ Complete |
+| Docker Deployment | ✅ Complete |
 | Monitoring (Grafana) | ⏳ Planned |
-| Docker Deployment | ⏳ Planned |
 
 ---
 
@@ -170,83 +170,90 @@ A **portfolio project** demonstrating production ML practices for financial time
 
 ---
 
-## Setup & Running Locally
-
-> **Work in Progress** — Full Docker Compose setup coming soon for one-command startup.
+## Setup & Running
 
 ### Prerequisites
-- Python 3.13+
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+- [Docker](https://docs.docker.com/get-docker/) + Docker Compose
 - MarketStack API key (for data ingestion)
 
-### Quick Start
+### Quick Start (Docker)
+
+**Prerequisites:**
+- Copy environment files: `cp configs/config.env.example configs/config.env.dev`
+- Update `configs/config.env.dev` with your MarketStack API key
+
+**First time:**
 ```bash
-# Clone and setup
+# Clone the repo
 git clone https://github.com/raydiwill/stock-prediction-ml.git
 cd stock-prediction-ml
-uv sync
 
-# Run tests
-uv run pytest -v -m "not slow"
+# Start core stack (db, mlflow, api, ui)
+make up-dev
 
-# Apply Feast feature store
-cd src/stock_prediction_ml/feast_repo && feast apply
-
-# Start API server (requires trained model + materialized features)
-uvicorn src.stock_prediction_ml.api.main:app --reload
-
-# Start Streamlit UI (requires API server running)
-./run_ui.sh
-# or: streamlit run src/stock_prediction_ml/ui/app.py
+# Train model + materialize features (one-time setup)
+make init
 ```
 
-### Full Pipeline (Airflow)
+**Returning:**
 ```bash
-# Set up Airflow
-export AIRFLOW_HOME=$(pwd)/orchestration
-airflow standalone
-
-# DAGs run on schedule:
-# - ingestion_dag:  Daily @ 07:00 UTC (fetch → validate → ingest)
-# - feature_engineering_dag: Manual trigger (build features → materialize to Feast)
-# - training_dag:   Weekly Sunday @ 09:00 UTC (train → auto-promote)
-# - prediction_dag: Daily @ 08:00 UTC (materialize → batch predict)
-
-# Run Airflow DAG tests
-pytest orchestration/tests/ -v
+# Core stack is already initialized — just start it
+make up-dev
 ```
 
-### Full Pipeline (Manual)
+**Development Workflow:**
 ```bash
-# 1. Pull stock data
-uv run python -m stock_prediction_ml.marketstack.pull
+# View logs
+make logs
 
-# 2. Validate data
-uv run python -m stock_prediction_ml.data_validation.validation
+# Shell access to API container
+make shell
 
-# 3. Ingest raw data into DB
-uv run python -m stock_prediction_ml.db.setup_db  # To create db tables if not done
-uv run python -m stock_prediction_ml.db.ingest  # Ingestion
-
-# 3. Build features
-uv run python -m stock_prediction_ml.features.build_features
-
-# 4. Apply Feast & materialize
-cd src/stock_prediction_ml/feast_repo
-feast apply
-feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S) # Daily run for only new data
-feast materialize 2020-01-01T00:00:00 $(date +%Y-%m-%dT%H:%M:%S) # From beginning of data to now
-
-
-# 5. Train model
-uv run python src/stock_prediction_ml/model/train.py --config configs/training/local.yaml
-
-# 6. Start API + UI
-uvicorn src.stock_prediction_ml.api.main:app --reload
-./run_ui.sh  # In a separate terminal
+# Stop core stack
+make down-dev
 ```
 
-> **Coming Soon**: `docker-compose up` to spin up the entire stack
+**Airflow (optional):**
+```bash
+# Spin up Airflow UI at http://localhost:8080
+make airflow-up
+
+# Credentials are printed automatically on startup
+# Or retrieve anytime with:
+make airflow-password
+
+# Stop Airflow only (leaves core stack running)
+make airflow-down
+```
+
+**Production Deployment:**
+```bash
+# Copy and configure prod environment
+cp configs/config.env.prod.example configs/config.env.prod
+# Edit configs/config.env.prod with real credentials
+
+# Start production stack (no bind-mounts, no dev ports)
+make up-prod
+
+# One-time: train model and materialize features
+make init-prod
+```
+
+**Services (Dev):**
+| Service | URL |
+|---------|-----|
+| FastAPI | http://localhost:8000 |
+| Streamlit UI | http://localhost:8501 |
+| MLflow | http://localhost:5001 |
+| Airflow | http://localhost:8080 |
+
+**Services (Prod):**
+| Service | Port |
+|---------|------|
+| FastAPI | 9000 |
+| Streamlit UI | 9501 |
+| MLflow | internal-only |
+| Airflow | 9080 |
 
 ---
 

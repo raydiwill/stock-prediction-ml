@@ -88,25 +88,6 @@ MODEL_VERSION = None
 MLFLOW_CLIENT = None  # MlflowClient instance for registry queries
 
 
-def validate_startup() -> None:
-    """Validate critical dependencies are loaded.
-
-    Raises:
-        RuntimeError: If any critical dependency failed to load.
-    """
-    missing = []
-    if MODEL is None:
-        missing.append("MODEL")
-    if FEAST_STORE is None:
-        missing.append("FEAST_STORE")
-
-    if missing:
-        raise RuntimeError(
-            f"Failed to load critical dependencies: {', '.join(missing)}. "
-            "API cannot start without these."
-        )
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage API startup and shutdown lifecycle.
@@ -169,13 +150,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error(f"Failed to get model version: {e}")
         MODEL_VERSION = "unknown"
 
-    # Validate startup - fail fast if critical deps missing
-    try:
-        validate_startup()
-    except RuntimeError as e:
-        logger.critical(str(e))
-        raise
-
     logger.info("=" * 60)
     logger.info("API startup complete!")
     logger.info(f"Model loaded: {MODEL is not None}")
@@ -229,7 +203,7 @@ async def log_requests(request: Request, call_next: Callable) -> Response:
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
+async def health_check(response: Response) -> HealthResponse:
     """Check API health and dependency status.
 
     Verifies that all required dependencies are loaded and operational:
@@ -243,6 +217,11 @@ async def health_check() -> HealthResponse:
             - feast_online_store: Boolean indicating Feast availability
             - model_version: Current champion model version
 
+    Note:
+        Responds with HTTP 503 when unhealthy so container orchestrators
+        (Docker healthcheck, Compose `condition: service_healthy`) don't
+        treat a degraded API as ready.
+
     Example:
         GET /health
         Response: {"status": "healthy", "model_loaded": true, ...}
@@ -254,6 +233,7 @@ async def health_check() -> HealthResponse:
         logger.info("All dependencies loaded!")
     else:
         status = "unhealthy"
+        response.status_code = 503
         logger.warning(
             f"Missing dependencies: {', '.join(checker['missing_dependencies'])}"
         )
