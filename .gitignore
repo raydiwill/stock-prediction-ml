@@ -48,3 +48,6 @@ TODO.txt
 
 # Images
 *.png
+
+# AI generated files
+.claude/
