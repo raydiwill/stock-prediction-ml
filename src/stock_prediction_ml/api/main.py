@@ -203,7 +203,7 @@ async def log_requests(request: Request, call_next: Callable) -> Response:
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
+async def health_check(response: Response) -> HealthResponse:
     """Check API health and dependency status.
 
     Verifies that all required dependencies are loaded and operational:
@@ -217,6 +217,11 @@ async def health_check() -> HealthResponse:
             - feast_online_store: Boolean indicating Feast availability
             - model_version: Current champion model version
 
+    Note:
+        Responds with HTTP 503 when unhealthy so container orchestrators
+        (Docker healthcheck, Compose `condition: service_healthy`) don't
+        treat a degraded API as ready.
+
     Example:
         GET /health
         Response: {"status": "healthy", "model_loaded": true, ...}
@@ -228,6 +233,7 @@ async def health_check() -> HealthResponse:
         logger.info("All dependencies loaded!")
     else:
         status = "unhealthy"
+        response.status_code = 503
         logger.warning(
             f"Missing dependencies: {', '.join(checker['missing_dependencies'])}"
         )
