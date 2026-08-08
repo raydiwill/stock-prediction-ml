@@ -218,8 +218,8 @@ make down-dev
 # Spin up Airflow UI at http://localhost:8080
 make airflow-up
 
-# Credentials are printed automatically on startup
-# Or retrieve anytime with:
+# Credentials come from AIRFLOW_ADMIN_* in configs/config.env.dev
+# Retrieve anytime with:
 make airflow-password
 
 # Stop Airflow only (leaves core stack running)
@@ -229,8 +229,8 @@ make airflow-down
 **Production Deployment:**
 ```bash
 # Copy and configure prod environment
-cp configs/config.env.prod.example configs/config.env.prod
-# Edit configs/config.env.prod with real credentials
+cp configs/config.env.example configs/config.env.prod
+# Edit configs/config.env.prod with real credentials (see prod-specific notes in the file's comments)
 
 # Start production stack (no bind-mounts, no dev ports)
 make up-prod
