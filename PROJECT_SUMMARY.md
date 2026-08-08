@@ -462,7 +462,7 @@ Feature vector (34 features after encoding `symbol`):
 - **Production Feast tests**: Add integration tests using production feature store (not temp fixtures)
 - **Incremental materialization**: Implement daily `materialize-incremental` workflow for feature updates
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
-- **Monitoring**: No drift detection or performance tracking in production (Grafana/Prometheus planned)
+- **Monitoring**: Grafana/Prometheus pull model for API metrics (no Pushgateway needed yet—batch job push metrics deferred until Airflow DAGs expose metrics endpoints)
 - **Containerization**: Docker Compose for local dev and production deployment
 - **Dev/prod container isolation**: `docker-compose.dev.yml` and `docker-compose.prod.yml` currently reuse identical `container_name`s (e.g. `stock-prediction-db`, `stock-prediction-fastapi`), so both stacks can't run concurrently — `make up-prod` force-stops dev first. Once all components are stable, differentiate names (e.g. `-dev`/`-prod` suffixes) and host ports so environments can coexist, and add a `docker-compose.staging.yml` following the same pattern (own env file under `configs/`, own Makefile targets `up-staging`/`down-staging`)
 
