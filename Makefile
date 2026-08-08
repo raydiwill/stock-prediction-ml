@@ -85,3 +85,6 @@ airflow-down:
 
 airflow-password:
 	@docker logs stock-prediction-airflow-dev 2>&1 | grep "Password for user" || true
+
+grafana-password:
+	@grep GRAFANA_ADMIN configs/config.env.dev
