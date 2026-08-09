@@ -16,7 +16,7 @@
 
 **Current Stage**: Full ML pipeline with REST API, Streamlit dashboard, Airflow orchestration, and comprehensive test suite.
 
-**Next Step**: Monitoring (Grafana/Prometheus).
+**Next Step**: Prometheus for API latency/error-rate/infra metrics (deferred — see note below).
 
 | Component | Status |
 |-----------|--------|
@@ -30,7 +30,9 @@
 | Testing (80+ tests) | ✅ Complete |
 | Airflow Orchestration | ✅ Complete |
 | Docker Deployment | ✅ Complete |
-| Monitoring (Grafana) | ⏳ Planned |
+| Monitoring (Grafana) | ✅ Complete |
+
+> **Note:** Grafana reads directly from the existing Postgres app database (`RawStockData`, `PredictionResult`) — there's no separate metrics-collection pipeline yet. Prometheus (API latency/error-rate/infra metrics) is a documented future step, not built.
 
 ---
 
@@ -246,6 +248,7 @@ make init-prod
 | Streamlit UI | http://localhost:8501 |
 | MLflow | http://localhost:5001 |
 | Airflow | http://localhost:8080 |
+| Grafana | http://localhost:3000 |
 
 **Services (Prod):**
 | Service | Port |
@@ -254,6 +257,7 @@ make init-prod
 | Streamlit UI | 9501 |
 | MLflow | internal-only |
 | Airflow | 9080 |
+| Grafana | 9300 |
 
 ---
 

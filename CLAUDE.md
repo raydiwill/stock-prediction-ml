@@ -43,7 +43,7 @@ make down-dev
 
 **Next Tasks**:
 - **Logging**: Switch from stdlib `logging` to `loguru` — simpler API, no handler boilerplate, immune to Alembic's `disable_existing_loggers`
-- **Monitoring**: Grafana/Prometheus for drift detection
+- **Monitoring (deferred)**: Prometheus for API latency/error-rate/infra metrics. Grafana dashboards reading directly from Postgres (`RawStockData`, `PredictionResult`) are done — see `grafana/`.
 
 ## Code Style
 

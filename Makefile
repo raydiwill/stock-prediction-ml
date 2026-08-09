@@ -5,7 +5,7 @@ API_CONTAINER_PROD := stock-prediction-fastapi-prod
 
 COMPOSE_PROD := docker compose -f docker-compose.prod.yml --env-file configs/config.env.prod
 
-.PHONY: up-dev down-dev init logs shell airflow-up airflow-down airflow-password up-prod down-prod init-prod
+.PHONY: up-dev down-dev init logs shell airflow-up airflow-down airflow-password up-prod down-prod init-prod grafana-password-dev grafana-password-prod
 
 up-dev:
 	$(COMPOSE_DEV) up -d --build --wait
@@ -85,5 +85,8 @@ airflow-down:
 airflow-password:
 	@grep AIRFLOW_ADMIN configs/config.env.dev
 
-grafana-password:
+grafana-password-dev:
 	@grep GRAFANA_ADMIN configs/config.env.dev
+
+grafana-password-prod:
+	@grep GRAFANA_ADMIN configs/config.env.prod
