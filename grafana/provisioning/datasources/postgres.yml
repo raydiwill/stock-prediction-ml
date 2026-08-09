@@ -1,0 +1,13 @@
+apiVersion: 1
+
+datasources:
+  - name: Postgres
+    type: postgres
+    url: db:5432
+    database: ${GRAFANA_DB_NAME}
+    user: ${GRAFANA_DB_USER}
+    password: ${GRAFANA_DB_PASSWORD}
+    isDefault: true
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
