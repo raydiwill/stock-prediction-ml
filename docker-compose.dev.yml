@@ -208,6 +208,7 @@ services:
 
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz"]
