@@ -84,6 +84,40 @@ services:
 
     restart: unless-stopped
 
+  grafana:
+    <<: *common-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+    image: grafana/grafana:13.0-slim
+    container_name: stock-prediction-grafana-prod
+
+    networks:
+      - isolated
+      - public
+
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+
+    ports:
+      - "9300:3000"
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+    restart: unless-stopped
+
   api:
     <<: *common-env
     depends_on:
@@ -231,6 +265,7 @@ volumes:
   mlflow-data:
   redis-data:
   airflow-logs:
+  grafana-data:
 
 networks:
   isolated:

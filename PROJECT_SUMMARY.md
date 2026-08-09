@@ -237,6 +237,8 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 
 ### 🔮 Future improvements
 - **Local vs. Cloud dev separation**: Currently, `docker-compose.dev.yml` is used for both local development and cloud dev environments. Future: create a separate `docker-compose.local.yml` with zero-auth services (Grafana anonymous Admin, no login forms) for friction-free local dev, keeping `dev.yml` for shared cloud dev with credentials and proper auth separation (admin login, configured datasources).
+- **Prometheus + API latency monitoring**: Add a `/metrics` endpoint exposing request latency, error rates, and prediction throughput for Prometheus scraping. Complements Grafana's current direct Postgres read-only dashboards. (Deferred from initial Grafana phase — Postgres-direct dashboards cover drift/data freshness first.)
+- **Role-based Postgres access**: Create read-only Postgres role for Grafana and other read-only consumers, enforcing least-privilege at the database layer. Prevents accidental/malicious writes even if a service's credentials are compromised.
 
 ## Key constraints
 - **Time-series integrity**: Strict temporal train/test splits via date quantiles (no data leakage)
