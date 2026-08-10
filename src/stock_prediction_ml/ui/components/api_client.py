@@ -91,20 +91,20 @@ def get_historical_data(symbol: str, start_date: str, end_date: str) -> dict | N
         return None
 
 
-def predict(symbol: str, date: str) -> dict | None:
+def predict(symbol: str) -> dict | None:
     """Request stock prediction from FastAPI backend.
 
     Args:
         symbol: Stock ticker (e.g., "AAPL")
-        date: Trading date in YYYY-MM-DD format
 
     Returns:
         dict with prediction results, or None if request failed
 
     Expected response keys:
-        symbol, date, prediction, prediction_label, probability, model_version
+        symbol, as_of_date, target_date, prediction, prediction_label,
+        probability, model_version
     """
-    payload = {"symbol": symbol, "date": date}
+    payload = {"symbol": symbol}
 
     try:
         response = httpx.post(
@@ -116,8 +116,7 @@ def predict(symbol: str, date: str) -> dict | None:
         return response.json()
     except httpx.HTTPStatusError as e:
         logger.error(
-            f"Prediction failed for {symbol} on {date}: "
-            f"status {e.response.status_code}"
+            f"Prediction failed for {symbol}: status {e.response.status_code}"
         )
         return None
     except httpx.RequestError as e:
