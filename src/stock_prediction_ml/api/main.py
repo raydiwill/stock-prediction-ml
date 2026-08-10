@@ -24,13 +24,13 @@ Usage:
     Get prediction:
         $ curl -X POST http://localhost:8000/predict \\
                -H "Content-Type: application/json" \\
-               -d '{"symbol": "AAPL", "date": "2026-02-04"}'
+               -d '{"symbol": "AAPL"}'
 
     View model info:
         $ curl http://localhost:8000/model/info
 
 Notes:
-    - Predictions use latest materialized features; date param is for reference only
+    - Predictions always use the latest materialized features for the symbol
     - Features must be materialized to online store before prediction requests
     - Model and Feast store are loaded once at startup for performance
 """
@@ -61,7 +61,7 @@ from stock_prediction_ml.api.schema import (
     PredictionResponse,
     StockRequest,
 )
-from stock_prediction_ml.api.utils import check_dependencies
+from stock_prediction_ml.api.utils import check_dependencies, next_trading_day
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.db.models import PredictionResult, RawStockData
 from stock_prediction_ml.db.session import get_db
@@ -254,19 +254,15 @@ async def predict(request: StockRequest, db: Session = Depends(get_db)) -> Predi
     Uses the latest features from Feast online store and the champion
     model from MLflow to predict whether the stock will go UP or DOWN.
 
-    Note:
-        The `date` parameter is for logging/reference only. Predictions
-        always use the latest available features from the online store.
-
     Args:
         request: StockRequest containing:
             - symbol: Stock ticker (e.g., "AAPL", "MSFT")
-            - date: Reference date (YYYY-MM-DD format)
 
     Returns:
         PredictionResponse containing:
             - symbol: Requested stock ticker
-            - date: Reference date from request
+            - as_of_date: Date of the features the prediction was computed from
+            - target_date: The trading day this prediction is about
             - prediction: Binary class (0=DOWN, 1=UP)
             - prediction_label: Human-readable label ("UP" or "DOWN")
             - probability: Model confidence for predicted class
@@ -276,14 +272,14 @@ async def predict(request: StockRequest, db: Session = Depends(get_db)) -> Predi
     Raises:
         HTTPException 503: If model or Feast store not loaded
         HTTPException 500: If feature retrieval or prediction fails
-        HTTPException 422: If request validation fails (invalid symbol/date)
+        HTTPException 422: If request validation fails (invalid symbol)
 
     Example:
         POST /predict
-        Body: {"symbol": "AAPL", "date": "2026-02-04"}
+        Body: {"symbol": "AAPL"}
         Response: {"prediction": 1, "prediction_label": "UP", ...}
     """
-    logger.info(f"Received prediction request: {request.symbol} on {request.date}")
+    logger.info(f"Received prediction request: {request.symbol}")
 
     # Check dependencies
     checker = check_dependencies(MODEL, FEAST_STORE)
@@ -347,20 +343,23 @@ async def predict(request: StockRequest, db: Session = Depends(get_db)) -> Predi
     )
 
     # --- Persist prediction to database ---
+    as_of_date = None
     try:
-        prediction_date = pd.to_datetime(request.date)
-
-        raw_stock_row = db.query(RawStockData).filter(
-            RawStockData.symbol == request.symbol,
-            RawStockData.date == prediction_date
-        ).first()
+        raw_stock_row = (
+            db.query(RawStockData)
+            .filter(RawStockData.symbol == request.symbol)
+            .order_by(RawStockData.date.desc())
+            .first()
+        )
 
         if raw_stock_row is None:
             logger.warning(
-                f"No RawStockData row for {request.symbol} on {request.date}. "
+                f"No RawStockData row for {request.symbol}. "
                 "Prediction will not be persisted."
             )
         else:
+            as_of_date = raw_stock_row.date.date()
+
             # Convert to dict
             features_dict = (
                 features_df.drop(columns=["symbol"], errors="ignore")
@@ -379,17 +378,22 @@ async def predict(request: StockRequest, db: Session = Depends(get_db)) -> Predi
                 features_used=features_dict
             ))
             db.commit()
-            logger.info(f"Prediction persisted for {request.symbol} on {request.date}")
+            logger.info(f"Prediction persisted for {request.symbol} as of {as_of_date}")
 
 
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to persist prediction to DB: {e}")
 
+    if as_of_date is None:
+        as_of_date = datetime.now(UTC).date()
+    target_date = next_trading_day(as_of_date)
+
     # Parse pyfunc output and return response
     return PredictionResponse(
         symbol=request.symbol,
-        date=request.date,
+        as_of_date=str(as_of_date),
+        target_date=str(target_date),
         prediction=int(prediction_class),
         prediction_label=prediction_label,
         probability=confidence,
@@ -591,34 +595,38 @@ async def get_stock_history(
     )
 
     # 5. Build daily records
+    # A prediction attached to row D-1 is a claim about D (build_features.py:93 labels
+    # each row with next-row direction), so record D's predicted_direction must come
+    # from the *previous* row's predictions, not its own.
     daily_records = []
     prev_close = previous_day.close if previous_day else None
+    prev_record = previous_day
 
     for record in records:
         current_close = record.close
-        
+
         # Compute actual direction
         if prev_close is not None:
             actual_direction = "UP" if current_close > prev_close else "DOWN"
         else:
             actual_direction = None
-        
-        # Get prediction if exists
+
+        # Get prediction made about this record from the previous row
         predicted_direction = None
         probability = None
-        if record.predictions:
+        if prev_record is not None and prev_record.predictions:
             latest_pred = max(
-                record.predictions, 
+                prev_record.predictions,
                 key=lambda p: p.predicted_at
             )
             predicted_direction = "UP" if latest_pred.prediction == 1 else "DOWN"
             probability = latest_pred.probability
-        
+
         # Compute correctness
         correct = None
         if actual_direction and predicted_direction:
             correct = (actual_direction == predicted_direction)
-        
+
         daily_records.append(
             DailyRecord(
                 date=record.date.strftime("%Y-%m-%d"),
@@ -629,8 +637,9 @@ async def get_stock_history(
                 correct=correct,
             )
         )
-        
+
         prev_close = current_close
+        prev_record = record
 
     # 6. Return response
     return HistoricalDataResponse(
