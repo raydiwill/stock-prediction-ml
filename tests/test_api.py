@@ -224,9 +224,14 @@ class TestPredictEndpoint:
         assert response.status_code == 200
 
         data = response.json()
-        assert all(
-            key in data for key in ["prediction", "prediction_label", "probability", "as_of_date", "target_date"]
-        )
+        required_keys = [
+            "prediction",
+            "prediction_label",
+            "probability",
+            "as_of_date",
+            "target_date",
+        ]
+        assert all(key in data for key in required_keys)
         assert data["prediction_label"] in ["UP", "DOWN"]
         assert data["symbol"] == "AAPL"
         assert data["model_version"] == "1"
@@ -294,7 +299,9 @@ class TestPredictEndpoint:
 class TestPredictPersistence:
     """Tests for prediction DB persistence in POST /predict."""
 
-    def test_predict_persists_to_newest_raw_data_row(self, client_with_dependencies, test_db_session):
+    def test_predict_persists_to_newest_raw_data_row(
+        self, client_with_dependencies, test_db_session
+    ):
         """Verify prediction lands on the newest RawStockData row for the symbol."""
         # Seed two dated rows; prediction should attach to the newest
         test_db_session.add_all([
@@ -362,7 +369,9 @@ class TestPredictPersistence:
         assert response.status_code == 200
         assert not queried
 
-    def test_predict_persists_when_only_past_rows_exist(self, client_with_dependencies, test_db_session):
+    def test_predict_persists_when_only_past_rows_exist(
+        self, client_with_dependencies, test_db_session
+    ):
         """Verify prediction is persisted even when only past RawStockData rows exist."""
         # This was silently failing from the UI before Phase 1
         test_db_session.add(
