@@ -3,36 +3,25 @@
 import streamlit as st
 
 from stock_prediction_ml.ui.components.api_client import health_check, predict
-from stock_prediction_ml.ui.utils import (
-    format_prediction_result,
-    get_next_trading_day,
-    get_valid_symbols,
-)
+from stock_prediction_ml.ui.utils import format_prediction_result, get_valid_symbols
 
 
 def render_prediction_form():
     """Render the stock prediction input form.
 
-    Displays a two-column layout with a symbol dropdown (left) and
-    the next trading day date (right), followed by a centered
-    "Get Prediction" button.
+    Displays a symbol dropdown followed by a centered "Get Prediction"
+    button. The prediction date is determined by the API response, not
+    guessed client-side.
 
     Returns:
-        tuple[str, date, bool]: ``(ticker, prediction_date, was_clicked)``
+        tuple[str, bool]: ``(ticker, was_clicked)``
     """
-    tomorrow = get_next_trading_day()
-
-    col_symbol, col_date = st.columns(2)
-    with col_symbol:
-        st.markdown("#### Select Stock Symbol")
-        ticker = st.selectbox(
-            "Choose a stock ticker:",
-            get_valid_symbols(),
-            label_visibility="collapsed",
-        )
-    with col_date:
-        st.markdown("#### Prediction Date")
-        st.info(f"📅 {tomorrow.strftime('%A, %B %d, %Y')}")
+    st.markdown("#### Select Stock Symbol")
+    ticker = st.selectbox(
+        "Choose a stock ticker:",
+        get_valid_symbols(),
+        label_visibility="collapsed",
+    )
 
     st.markdown("")
     _, col_btn, _ = st.columns([1, 1, 1])
@@ -41,10 +30,10 @@ def render_prediction_form():
             "🔮 Get Prediction", type="primary", use_container_width=True
         )
 
-    return ticker, tomorrow, click
+    return ticker, click
 
 
-def render_prediction_result(result: dict):
+def render_prediction_result(result: dict, prediction: dict):
     """Display the formatted prediction result with visual styling.
 
     Renders a two-column section showing the predicted direction
@@ -53,14 +42,18 @@ def render_prediction_result(result: dict):
     Args:
         result: Formatted dict from ``format_prediction_result()`` with
             keys ``direction``, ``confidence``, ``color``, ``emoji``.
+        prediction: Raw API response with keys ``as_of_date``, ``target_date``.
     """
     direction = result.get("direction")
     confidence = result.get("confidence")
     text_color = result.get("color")
     emoji = result.get("emoji")
+    target_date = prediction.get("target_date")
+    as_of_date = prediction.get("as_of_date")
 
     st.markdown("---")
     st.markdown("### 📊 Prediction Result")
+    st.info(f"📅 Prediction for {target_date}, based on data through {as_of_date}")
     st.markdown("")
 
     col_pred, col_conf = st.columns(2)
@@ -110,7 +103,7 @@ def main():
     Orchestrates the full page flow:
         1. Page header and description
         2. API health-check status bar
-        3. Prediction input form (symbol + date)
+        3. Prediction input form (symbol)
         4. On button click — calls ``predict()`` with a loading spinner,
            then displays the result or an error message
     """
@@ -126,17 +119,17 @@ def main():
     st.markdown("")  # Spacing
 
     # Render form and get inputs
-    ticker, tomorrow, predict_clicked = render_prediction_form()
+    ticker, predict_clicked = render_prediction_form()
 
     # Handle prediction request
     if predict_clicked:
         # Call API with loading spinner
         with st.spinner("🤖 Analyzing market data..."):
-            prediction = predict(ticker, tomorrow.strftime("%Y-%m-%d"))
+            prediction = predict(ticker)
 
         # Display result or error
         if not prediction:
             st.error("❌ Unable to generate prediction. Please try again.")
         else:
             result = format_prediction_result(prediction)
-            render_prediction_result(result)
+            render_prediction_result(result, prediction)

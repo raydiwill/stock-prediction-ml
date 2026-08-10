@@ -2,15 +2,11 @@
 
 from datetime import UTC, datetime
 
-import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
 
 class StockRequest(BaseModel):
     symbol: str = Field(..., examples=["AAPL"], description="Stock ticker symbol")
-    date: str = Field(
-        ..., examples=["2025-01-12"], description="Trading date in format YYYY-MM-DD"
-    )
 
     @field_validator("symbol")
     @classmethod
@@ -23,23 +19,17 @@ class StockRequest(BaseModel):
         else:
             return sent_symbol.upper()
 
-    @field_validator("date")
-    @classmethod
-    def validate_date_string(cls, sent_date):
-        try:
-            parsed_date = pd.to_datetime(sent_date)
-        except (ValueError, TypeError):
-            raise ValueError("Invalid format! Must be in YYYY-MM-DD.")
-
-        if parsed_date.weekday() >= 5:
-            raise ValueError(f"Date {sent_date} is a weekend (markets closed)")
-
-        return sent_date
-
 
 class PredictionResponse(BaseModel):
     symbol: str = Field(..., examples=["AAPL"])
-    date: str = Field(..., examples=["2025-01-12"])
+    as_of_date: str = Field(
+        ...,
+        examples=["2025-01-12"],
+        description="Date of the features the prediction was computed from",
+    )
+    target_date: str = Field(
+        ..., examples=["2025-01-13"], description="The trading day this prediction is about"
+    )
     prediction: int = Field(..., ge=0, le=1, description="0=down, 1=up")
     prediction_label: str = Field(
         ..., examples=["UP"], description="Human-readable prediction"
@@ -91,7 +81,9 @@ class DailyRecord(BaseModel):
         description="Actual price movement vs previous day (UP/DOWN/None for first day)",
     )
     predicted_direction: str | None = Field(
-        None, examples=["UP"], description="Model prediction if one exists for this day"
+        None,
+        examples=["UP"],
+        description="The prediction made on the prior trading day about this day",
     )
     probability: float | None = Field(
         None, description="Model confidence if prediction exists"

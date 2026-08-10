@@ -1,7 +1,8 @@
 """Consolidated utility functions for Streamlit UI."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
+from stock_prediction_ml.api.utils import next_trading_day as _next_trading_day
 from stock_prediction_ml.config.settings import settings
 
 
@@ -25,15 +26,7 @@ def get_next_trading_day() -> date:
     Note:
         Does not account for market holidays.
     """
-    today = datetime.today()
-    tomorrow = today + timedelta(days=1)
-
-    if tomorrow.weekday() == 5:
-        tomorrow += timedelta(days=2)
-    elif tomorrow.weekday() == 6:
-        tomorrow += timedelta(days=1)
-
-    return tomorrow
+    return _next_trading_day(datetime.today().date())
 
 
 def format_prediction_result(result: dict) -> dict:

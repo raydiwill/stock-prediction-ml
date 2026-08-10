@@ -112,41 +112,41 @@ class TestGetNextTradingDay:
         from stock_prediction_ml.ui.utils import get_next_trading_day
 
         mock_datetime = mocker.patch("stock_prediction_ml.ui.utils.datetime")
-        mock_datetime.today.return_value = datetime(2026, 2, 16)
+        mock_datetime.today.return_value.date.return_value = datetime(2026, 2, 16).date()
 
         date = get_next_trading_day()
 
-        assert date == datetime(2026, 2, 17)
+        assert date == datetime(2026, 2, 17).date()
 
     def test_friday_skips_weekend(self, mocker):
         from stock_prediction_ml.ui.utils import get_next_trading_day
 
         mock_datetime = mocker.patch("stock_prediction_ml.ui.utils.datetime")
-        mock_datetime.today.return_value = datetime(2026, 2, 13)
+        mock_datetime.today.return_value.date.return_value = datetime(2026, 2, 13).date()
 
         date = get_next_trading_day()
 
-        assert date == datetime(2026, 2, 16)
+        assert date == datetime(2026, 2, 16).date()
 
     def test_saturday_returns_monday(self, mocker):
         from stock_prediction_ml.ui.utils import get_next_trading_day
 
         mock_datetime = mocker.patch("stock_prediction_ml.ui.utils.datetime")
-        mock_datetime.today.return_value = datetime(2026, 2, 14)
+        mock_datetime.today.return_value.date.return_value = datetime(2026, 2, 14).date()
 
         date = get_next_trading_day()
 
-        assert date == datetime(2026, 2, 16)
+        assert date == datetime(2026, 2, 16).date()
 
     def test_sunday_returns_monday(self, mocker):
         from stock_prediction_ml.ui.utils import get_next_trading_day
 
         mock_datetime = mocker.patch("stock_prediction_ml.ui.utils.datetime")
-        mock_datetime.today.return_value = datetime(2026, 2, 15)
+        mock_datetime.today.return_value.date.return_value = datetime(2026, 2, 15).date()
 
         date = get_next_trading_day()
 
-        assert date == datetime(2026, 2, 16)
+        assert date == datetime(2026, 2, 16).date()
 
 
 # ==================== UTILS — format_prediction_result ====================
@@ -417,7 +417,8 @@ class TestPredict:
 
         payload = {
             "symbol": "AAPL",
-            "date": "2026-02-16",
+            "as_of_date": "2026-02-16",
+            "target_date": "2026-02-17",
             "prediction": 1,
             "prediction_label": "UP",
             "probability": 0.75,
@@ -430,12 +431,12 @@ class TestPredict:
         mock_response.status_code = 200
         mock_response.json.return_value = payload
 
-        result = predict("AAPL", "2026-02-16")
+        result = predict("AAPL")
 
         assert result == payload
         mock_post.assert_called_once_with(
             f"{API_BASE_URL}/predict",
-            json={"symbol": "AAPL", "date": "2026-02-16"},
+            json={"symbol": "AAPL"},
             timeout=10.0,
         )
 
@@ -445,7 +446,7 @@ class TestPredict:
         mock_post = mocker.patch("httpx.post")
         mock_post.side_effect = httpx.RequestError("Error request")
 
-        result = predict("AAPL", "2026-02-16")
+        result = predict("AAPL")
 
         assert result is None
 
@@ -457,7 +458,7 @@ class TestPredict:
             "HTTP error", request=mocker.Mock(), response=mocker.Mock()
         )
 
-        result = predict("AAPL", "2026-02-16")
+        result = predict("AAPL")
 
         assert result is None
 
