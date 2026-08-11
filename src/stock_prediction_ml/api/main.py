@@ -595,34 +595,38 @@ async def get_stock_history(
     )
 
     # 5. Build daily records
+    # A prediction attached to row D-1 is a claim about D (build_features.py:93 labels
+    # each row with next-row direction), so record D's predicted_direction must come
+    # from the *previous* row's predictions, not its own.
     daily_records = []
     prev_close = previous_day.close if previous_day else None
+    prev_record = previous_day
 
     for record in records:
         current_close = record.close
-        
+
         # Compute actual direction
         if prev_close is not None:
             actual_direction = "UP" if current_close > prev_close else "DOWN"
         else:
             actual_direction = None
-        
-        # Get prediction if exists
+
+        # Get prediction made about this record from the previous row
         predicted_direction = None
         probability = None
-        if record.predictions:
+        if prev_record is not None and prev_record.predictions:
             latest_pred = max(
-                record.predictions, 
+                prev_record.predictions,
                 key=lambda p: p.predicted_at
             )
             predicted_direction = "UP" if latest_pred.prediction == 1 else "DOWN"
             probability = latest_pred.probability
-        
+
         # Compute correctness
         correct = None
         if actual_direction and predicted_direction:
             correct = (actual_direction == predicted_direction)
-        
+
         daily_records.append(
             DailyRecord(
                 date=record.date.strftime("%Y-%m-%d"),
@@ -633,8 +637,9 @@ async def get_stock_history(
                 correct=correct,
             )
         )
-        
+
         prev_close = current_close
+        prev_record = record
 
     # 6. Return response
     return HistoricalDataResponse(
