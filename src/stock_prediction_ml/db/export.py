@@ -14,10 +14,9 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import select
 
+from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
 from stock_prediction_ml.db.models import RawStockData
 from stock_prediction_ml.db.session import SessionLocal
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,25 +84,28 @@ def export_validated_data(
 
 
 def save_to_parquet(
-    df: pd.DataFrame, start_date: str, end_date: str, output_path: Path | None = None
+    df: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+    output_path: str | Path | None = None,
 ) -> None:
     """Write DataFrame to parquet, creating parent dirs if needed.
 
     Hint: same pattern as save_feature_data in build_features.py
     """
-    file_name = f"history_{start_date}_{end_date}.parquet"
-
     if output_path is None:
-        output_path = PROJECT_ROOT / "data" / "processed" / file_name
+        file_name = f"history_{start_date}_{end_date}.parquet"
+        output_path = data_path("processed", file_name)
     else:
+        output_path = Path(output_path)
         if output_path.suffix != ".parquet":
             output_path = output_path.with_suffix(".parquet")
+        output_path = str(output_path)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_parent_dir(output_path)
     logger.info(f"Saving exported data from DB to: {output_path}")
-    df.to_parquet(output_path, index=False)
+    df.to_parquet(output_path, index=False, storage_options=storage_options())
     logger.info(f"Successfully saved {len(df)} rows to {output_path}")
-    logger.debug(f"File size: {output_path.stat().st_size / 1024:.2f} KB")
 
 
 def main() -> None:

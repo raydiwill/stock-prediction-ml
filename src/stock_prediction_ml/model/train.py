@@ -49,6 +49,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
 from stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.config.storage import data_path, storage_options
 
 # Configure enhanced logging with timestamps and better formatting
 logger = logging.getLogger(__name__)
@@ -339,8 +340,8 @@ def load_training_data_from_feast(
     logger.info(f"Initializing FeatureStore from: {feast_repo_path}")
     store = FeatureStore(str(feast_repo_path))
 
-    raw_feature_path = PROJECT_ROOT / "data" / "feature" / "stock_eod_features.parquet"
-    raw_df = pd.read_parquet(raw_feature_path)
+    raw_feature_path = data_path("feature", "stock_eod_features.parquet")
+    raw_df = pd.read_parquet(raw_feature_path, storage_options=storage_options())
 
     # Prepare entity for point-in-time Feast
     entity_df = raw_df[["symbol", "date"]].copy()

@@ -3,16 +3,15 @@ import hashlib
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 from sqlalchemy.exc import IntegrityError
 
+from stock_prediction_ml.config.storage import data_path, storage_options
 from stock_prediction_ml.db import models
 from stock_prediction_ml.db.session import get_db
 
 TARGET_TABLE = models.RawStockData
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def read_validated_file(path: str | Path | None = None) -> pd.DataFrame:
+def read_validated_file(path: str | None = None) -> pd.DataFrame:
     """
     Read a validated parquet file into a pandas DataFrame.
 
@@ -47,10 +46,9 @@ def read_validated_file(path: str | Path | None = None) -> pd.DataFrame:
     dtype='object')
     """
     if path is None:
-        path = PROJECT_ROOT / "data" / "processed" / "validated_data.parquet"
+        path = data_path("processed", "validated_data.parquet")
 
-    path = Path(path)
-    df = pd.read_parquet(path)
+    df = pd.read_parquet(path, storage_options=storage_options())
 
     return df
 
@@ -89,9 +87,7 @@ def dataframe_to_rows(df: pd.DataFrame) -> list[dict]:
         True
     """
     df["validated"] = True
-    df["parquet_path"] = str(
-        PROJECT_ROOT / "data" / "processed" / "validated_data.parquet"
-    )
+    df["parquet_path"] = data_path("processed", "validated_data.parquet")
     df["pulled_at"] = pd.to_datetime(df["pulled_at"])
 
     return df.to_dict(orient="records")
@@ -488,7 +484,7 @@ def ingest_data_into_db(df):
     return summary
 
 
-def main(path: str | Path | None = None, dry_run: bool = False) -> None:
+def main(path: str | None = None, dry_run: bool = False) -> None:
     logger.info("Starting data ingestion pipeline...")
 
     df = read_validated_file(path)
