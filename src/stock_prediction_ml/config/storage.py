@@ -26,6 +26,20 @@ def data_path(*parts: str) -> str:
         return str(Path(settings.data_root).joinpath(*parts))
 
 
+def ensure_parent_dir(path: str) -> None:
+    """
+    Create the parent directory for a local path. No-op for S3 URIs.
+
+    pandas' to_parquet requires the parent directory to already exist for
+    local paths, but has no such requirement for S3.
+
+    Args:
+        path: Local path string or s3:// URI, as returned by data_path().
+    """
+    if not path.startswith("s3://"):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
 def storage_options() -> dict:
     """
     Return fsspec kwargs for pandas read/write operations.
