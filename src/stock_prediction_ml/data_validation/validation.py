@@ -5,8 +5,7 @@ from pathlib import Path
 import great_expectations as gx
 import pandas as pd
 
-# Determine Project Root (3 levels up from this file)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -159,8 +158,8 @@ def main():
 
     parser.add_argument(
         "--input",
-        type=Path,
-        default=PROJECT_ROOT / "data" / "processed" / "combined_eod.parquet",
+        type=str,
+        default=data_path("processed", "combined_eod.parquet"),
         help="Path to the input Parquet file containing stock data.",
     )
 
@@ -173,12 +172,12 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.input.exists():
+    logger.info(f"Reading data from {args.input}...")
+    try:
+        df = pd.read_parquet(args.input, storage_options=storage_options())
+    except FileNotFoundError:
         logger.error(f"Input file not found: {args.input}")
         return
-
-    logger.info(f"Reading data from {args.input}...")
-    df = pd.read_parquet(args.input)
 
     context = get_context()
     datasource = add_pandas_datasource(context)
@@ -214,9 +213,10 @@ def main():
         exit(1) # Exit with error code
     else:
         logger.info("All expectations passed!")
-        
-        output_path = args.input.parent / "validated_data.parquet"
-        df.to_parquet(output_path, index=False)
+
+        output_path = data_path("processed", "validated_data.parquet")
+        ensure_parent_dir(output_path)
+        df.to_parquet(output_path, index=False, storage_options=storage_options())
         logger.info(f"Validated data saved to: {output_path}")
 
 

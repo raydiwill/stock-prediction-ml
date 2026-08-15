@@ -8,9 +8,14 @@ import pandas as pd
 import requests
 
 from stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.config.storage import (
+    data_path,
+    ensure_parent_dir,
+    list_parquet,
+    storage_options,
+)
 
 API_URL = "https://api.marketstack.com/v2"
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 # Set up logging
@@ -181,20 +186,20 @@ def save_to_parquet(df: pd.DataFrame, filename: str) -> None:
         return
 
     # Output path to save parquet file
-    output_path = PROJECT_ROOT / "data" / "raw" / filename
+    output_path = data_path("raw", filename)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(output_path, index=False)
+    ensure_parent_dir(output_path)
+    df.to_parquet(output_path, index=False, storage_options=storage_options())
     logger.info(f"Saved {len(df)} rows to {output_path}")
 
 
-def combine_and_save_to_parquet(path: str | Path | None = None) -> None:
+def combine_and_save_to_parquet(path: str | None = None) -> None:
     """
     Read all parquet files from a directory, combine them, and save to processed folder.
 
     Args:
-        path (str | Path | None, optional): Input directory containing raw parquet files.
-            Defaults to PROJECT_ROOT/data/raw.
+        path (str | None, optional): Input directory containing raw parquet files.
+            Defaults to data_path("raw").
 
     Returns:
         None
@@ -205,18 +210,11 @@ def combine_and_save_to_parquet(path: str | Path | None = None) -> None:
         # and saves 'combined_eod.parquet' in data/processed.
     """
     # Determine Input Directory
-    if path is None:
-        input_dir = PROJECT_ROOT / "data" / "raw"
-    else:
-        input_dir = Path(path)
-
-    if not input_dir.exists():
-        logger.warning(f"Input directory {input_dir} does not exist.")
-        return
+    input_dir = path if path is not None else "raw"
 
     # Find all parquet files
     parquet_files = [
-        f for f in input_dir.glob("*.parquet") if "combined_eod" not in f.name
+        f for f in list_parquet(input_dir) if "combined_eod" not in f
     ]
 
     if not parquet_files:
@@ -229,7 +227,7 @@ def combine_and_save_to_parquet(path: str | Path | None = None) -> None:
     dfs = []
     for file in parquet_files:
         try:
-            df = pd.read_parquet(file)
+            df = pd.read_parquet(file, storage_options=storage_options())
             if not df.empty:
                 dfs.append(df)
         except Exception as e:
@@ -242,11 +240,9 @@ def combine_and_save_to_parquet(path: str | Path | None = None) -> None:
     combined_df = pd.concat(dfs, ignore_index=True)
 
     # Save to Processed
-    output_dir = PROJECT_ROOT / "data" / "processed"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_path = output_dir / "combined_eod.parquet"
-    combined_df.to_parquet(output_path, index=False)
+    output_path = data_path("processed", "combined_eod.parquet")
+    ensure_parent_dir(output_path)
+    combined_df.to_parquet(output_path, index=False, storage_options=storage_options())
 
     logger.info(f"Successfully combined {len(combined_df)} rows from {len(dfs)} files.")
     logger.info(f"Saved to {output_path}")
