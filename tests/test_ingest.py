@@ -107,10 +107,12 @@ def test_read_validated_file_default_path(sample_dataframe, mocker, tmp_path):
     """
     Test reading from default path.
     """
-    parquet_path = tmp_path / "data" / "processed" / "validated_data.parquet"
+    parquet_path = tmp_path / "processed" / "validated_data.parquet"
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
     sample_dataframe.to_parquet(parquet_path)
-    mocker.patch("stock_prediction_ml.db.ingest.PROJECT_ROOT", tmp_path)
+    mocker.patch(
+        "stock_prediction_ml.config.storage.settings.data_root", str(tmp_path)
+    )
 
     df = read_validated_file()
 
