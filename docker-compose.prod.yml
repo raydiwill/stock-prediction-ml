@@ -84,6 +84,54 @@ services:
 
     restart: unless-stopped
 
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: stock-prediction-minio-prod
+
+    # No host port publish — internal only.
+    networks:
+      - isolated
+
+    volumes:
+      - minio-data:/data
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    command: server /data --console-address ":9001"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: stock-prediction-minio-init-prod
+    depends_on:
+      minio:
+        condition: service_healthy
+
+    networks:
+      - isolated
+
+    environment:
+      MC_HOST_minio: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000
+
+    entrypoint: >
+      /bin/sh -c "
+      mc mb --ignore-existing minio/raw &&
+      mc mb --ignore-existing minio/processed &&
+      mc mb --ignore-existing minio/feature &&
+      mc mb --ignore-existing minio/mlflow
+      "
+
+    restart: "no"
+
   grafana:
     <<: *common-env
     depends_on:
@@ -264,6 +312,7 @@ volumes:
   postgresql_data:
   mlflow-data:
   redis-data:
+  minio-data:
   airflow-logs:
   grafana-data:
 
