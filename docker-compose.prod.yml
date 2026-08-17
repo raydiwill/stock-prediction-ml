@@ -186,12 +186,8 @@ services:
 
     container_name: stock-prediction-fastapi-prod
 
-    # No ./src or ./configs bind mounts — prod runs off what's baked into
-    # the image at build time, not live host files. ./data is mounted
-    # (same as dev) since feature data isn't baked into the image and
-    # ingestion/materialization write to it at runtime.
-    volumes:
-      - ./data:/usr/local/app/data
+    # No bind mounts — prod runs off what's baked into the image at build time.
+    # Data storage is entirely backed by MinIO (s3:// URIs in settings).
 
     networks:
       - isolated
@@ -215,8 +211,6 @@ services:
       target: ui
 
     container_name: stock-prediction-uis-prod
-
-    # No bind mounts, same reasoning as api.
 
     networks:
       - isolated
@@ -320,6 +314,7 @@ volumes:
   minio-data:
   airflow-logs:
   grafana-data:
+  data:
 
 networks:
   isolated:

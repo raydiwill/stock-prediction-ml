@@ -127,7 +127,6 @@ services:
     container_name: stock-prediction-fastapi-dev
     volumes:
       - ./src:/usr/local/app/src
-      - ./data:/usr/local/app/data
       - ./configs:/usr/local/app/configs
 
     environment:
@@ -268,6 +267,5 @@ volumes:
   mlflow-data:
   redis-data:
   minio-data:
-  data:
   airflow-logs:
   grafana-data:
