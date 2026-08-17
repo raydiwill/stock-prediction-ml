@@ -38,7 +38,7 @@ _HISTORY_FILE = f"data/processed/history_{_START_DATE}_{_END_DATE}.parquet"
 def feature_engineering_dag():
     """Build features from validated data and materialize to Feast."""
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def export_from_db() -> str:
         return (
             "cd {{ var.value.project_root }} && "
@@ -48,7 +48,7 @@ def feature_engineering_dag():
             f"--output {_HISTORY_FILE}"
         )
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def build_features() -> str:
         return (
             "cd {{ var.value.project_root }} && "
@@ -56,11 +56,11 @@ def feature_engineering_dag():
             f"--input_file {_HISTORY_FILE}"  
         )
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def feast_apply() -> str:
         return "cd {{ var.value.project_root }}/src/stock_prediction_ml/feast_repo && feast apply"
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def feast_materialize() -> str:
         return (
             "cd {{ var.value.project_root }}/src/stock_prediction_ml/feast_repo && "

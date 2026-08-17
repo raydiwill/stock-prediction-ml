@@ -62,7 +62,7 @@ def ingestion_dag():
         fetch_data >> validate_data >> ingest_to_db
     """
 
-    @task.bash(env=_ENV, retries=3, retry_delay=timedelta(minutes=5))
+    @task.bash(env=_ENV, append_env=True, retries=3, retry_delay=timedelta(minutes=5))
     def fetch_data() -> str:
         """Pull EOD prices from MarketStack for the schedule interval.
 
@@ -76,7 +76,7 @@ def ingestion_dag():
             "--end_date {{ data_interval_end | ds }}"
         )
 
-    @task.bash(env=_ENV, retries=2)
+    @task.bash(env=_ENV, append_env=True, retries=2)
     def validate_data() -> str:
         """Run Great Expectations checks on the combined parquet.
 
@@ -89,7 +89,7 @@ def ingestion_dag():
             "--input data/processed/combined_eod.parquet"
         )
 
-    @task.bash(env=_ENV, retries=2)
+    @task.bash(env=_ENV, append_env=True, retries=2)
     def ingest_to_db() -> str:
         """Load validated parquet rows into the ``RawStockData`` table."""
         return (

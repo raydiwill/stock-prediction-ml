@@ -56,7 +56,7 @@ def prediction_dag():
         materialize_features >> batch_predict
     """
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def materialize_features() -> str:
         """Push latest feature rows into the Feast online store."""
         return (
@@ -64,7 +64,7 @@ def prediction_dag():
             "feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)"
         )
 
-    @task.bash(env=_ENV, retries=2)
+    @task.bash(env=_ENV, append_env=True, retries=2)
     def batch_predict() -> str:
         """Run champion model against every ticker and save PredictionResult rows."""
         return (

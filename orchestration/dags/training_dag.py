@@ -47,7 +47,7 @@ _ENV = {
 def training_dag():
     """Train CatBoost model and promote if thresholds are met."""
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def train_model() -> str:
         return (
             f"cd {PROJECT_ROOT} && "
@@ -57,7 +57,7 @@ def training_dag():
             "--end-date {{ ds }}"
         )
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def promote_model() -> str:
         return (
             f"cd {PROJECT_ROOT} && "
