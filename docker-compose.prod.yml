@@ -239,17 +239,17 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      # Airflow 3's default SimpleAuthManager ignores `airflow users create`
+      # and prints a random admin password to the logs on every restart.
+      # Use the FAB RBAC auth manager instead so the admin user/password
+      # below are the ones that actually work.
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       ENV_FILE: configs/config.env.prod
-    command: >
+    command: |
       bash -c "
       airflow db migrate &&
-      (airflow users create \
-          --username $AIRFLOW_ADMIN_USERNAME \
-          --firstname Raydi \
-          --lastname Tran \
-          --role Admin \
-          --email $AIRFLOW_ADMIN_EMAIL \
-          --password $AIRFLOW_ADMIN_PASSWORD || true) &&
+      (airflow users create --username $AIRFLOW_ADMIN_USERNAME --firstname Raydi --lastname Tran --role Admin --email $AIRFLOW_ADMIN_EMAIL --password $AIRFLOW_ADMIN_PASSWORD || true) &&
       airflow variables set project_root /usr/local/app
       "
 
@@ -280,6 +280,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       ENV_FILE: configs/config.env.prod
 
     volumes:
