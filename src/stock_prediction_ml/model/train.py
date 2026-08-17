@@ -282,18 +282,18 @@ def load_selected_features(
 
     Args:
         selected_features_path (str | Path | None): Path to the JSON file.
-            If None, defaults to data/meta/selected_features.json.
+            If None, defaults to configs/meta/selected_features.json.
 
     Returns:
         list[str]: List of selected feature names.
 
     Example:
-        >>> feats = load_selected_features("data/meta/selected_features.json")
+        >>> feats = load_selected_features("configs/meta/selected_features.json")
         >>> feats[:3]
         ['return', 'volatility_5d', 'sma_10']
     """
     if selected_features_path is None:
-        selected_features_path = PROJECT_ROOT / "data" / "meta" / "selected_features.json"
+        selected_features_path = PROJECT_ROOT / "configs" / "meta" / "selected_features.json"
     else:
         selected_features_path = Path(selected_features_path)
 
