@@ -1,15 +1,13 @@
 """Unit tests for storage abstraction (data_path, storage_options, list_parquet)."""
 
-import pytest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.config.storage import (
     data_path,
     ensure_parent_dir,
-    storage_options,
     list_parquet,
+    storage_options,
 )
 
 

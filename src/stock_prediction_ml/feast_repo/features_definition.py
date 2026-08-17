@@ -4,9 +4,8 @@ from feast import FeatureView, Field, FileSource
 from feast.types import Float32, Int32
 
 from stock_prediction_ml.config.settings import settings
-from stock_prediction_ml.config.storage import data_path, storage_options
+from stock_prediction_ml.config.storage import data_path
 from stock_prediction_ml.feast_repo.entities import stock
-
 
 stock_features_source = FileSource(
     path=data_path("feature", "stock_eod_features.parquet"),
