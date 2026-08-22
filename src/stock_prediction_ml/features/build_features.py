@@ -1,9 +1,10 @@
 import argparse
 import logging
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
 
 # Set up logging
 logging.basicConfig(
@@ -12,11 +13,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-
 def read_validated_data(
-    file_path: str | Path | None = None,
+    file_path: str | None = None,
     columns_to_keep: list[str] = [
         "date",
         "symbol",
@@ -32,7 +30,7 @@ def read_validated_data(
     Read validated data from a Parquet file.
 
     Args:
-        file_path (str | Path | None): Path to the Parquet file.
+        file_path (str | None): Path to the Parquet file.
             Defaults to data/processed/validated_data.parquet.
         columns_to_keep (list[str], optional): Columns to retain.
 
@@ -40,16 +38,11 @@ def read_validated_data(
         pd.DataFrame: DataFrame read from the Parquet file.
     """
     if file_path is None:
-        file_path = PROJECT_ROOT / "data" / "processed" / "validated_data.parquet"
-    else:
-        file_path = Path(file_path)
+        file_path = data_path("processed", "validated_data.parquet")
 
     logger.info(f"Reading validated data from: {file_path}")
 
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    df = pd.read_parquet(file_path)
+    df = pd.read_parquet(file_path, storage_options=storage_options(file_path))
     logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
 
     # Ensure date is datetime
@@ -153,9 +146,7 @@ def create_lag_features(df: pd.DataFrame, lag_days: list[int]) -> pd.DataFrame:
     return df
 
 
-def create_rolling_features(
-    df: pd.DataFrame, rolling_windows: list[int]
-) -> pd.DataFrame:
+def create_rolling_features(df: pd.DataFrame, rolling_windows: list[int]) -> pd.DataFrame:
     """
     Creates rolling mean and standard deviation features for returns.
 
@@ -203,9 +194,7 @@ def create_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df["day_of_month"] = df["date"].dt.day
     df["quarter"] = df["date"].dt.quarter
     df["is_quarter_end"] = df["date"].dt.is_quarter_end.astype(int)
-    logger.info(
-        "Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end"
-    )
+    logger.info("Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end")
     return df
 
 
@@ -344,9 +333,7 @@ def create_features(
         logger.info(f"Dropped {dropped_nan} rows with NaN values")
 
     final_shape = df.shape
-    logger.info(
-        f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})"
-    )
+    logger.info(f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})")
     logger.info(f"Total features created: {final_shape[1] - initial_shape[1]}")
 
     return df
@@ -369,21 +356,17 @@ def save_feature_data(
     >>> save_feature_data(df, "feature_data.parquet")
     Saved to data/processed/feature_data.parquet
     """
-    file_path = PROJECT_ROOT / "data" / "feature"
     if file_name is None:
-        out_path = file_path / "stock_eod_features.parquet"
-    else:
-        if not file_name.endswith(".parquet"):
-            file_name += ".parquet"
-        out_path = file_path / file_name
+        file_name = "stock_eod_features.parquet"
+    elif not file_name.endswith(".parquet"):
+        file_name += ".parquet"
 
-    output_path = Path(out_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = data_path("feature", file_name)
 
+    ensure_parent_dir(output_path)
     logger.info(f"Saving feature data to: {output_path}")
-    df.to_parquet(output_path, index=False)
+    df.to_parquet(output_path, index=False, storage_options=storage_options(output_path))
     logger.info(f"Successfully saved {len(df)} rows to {output_path}")
-    logger.debug(f"File size: {output_path.stat().st_size / 1024:.2f} KB")
 
 
 def main():

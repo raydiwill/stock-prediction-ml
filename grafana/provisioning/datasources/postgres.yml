@@ -9,6 +9,7 @@ datasources:
     user: ${GRAFANA_DB_USER}
     isDefault: true
     jsonData:
+      database: ${GRAFANA_DB_NAME}
       sslmode: disable
       postgresVersion: 1600
     secureJsonData:

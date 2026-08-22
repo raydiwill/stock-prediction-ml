@@ -33,6 +33,7 @@ _ENV = {
     "PYTHONPATH": "{{ var.value.project_root }}/src",
     "PATH": "{{ var.value.project_root }}/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 }
+_YESTERDAY = "{{ macros.ds_add(ds, -1) }}"
 
 
 @dag(
@@ -56,7 +57,7 @@ def prediction_dag():
         materialize_features >> batch_predict
     """
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def materialize_features() -> str:
         """Push latest feature rows into the Feast online store."""
         return (
@@ -64,14 +65,14 @@ def prediction_dag():
             "feast materialize-incremental $(date +%Y-%m-%dT%H:%M:%S)"
         )
 
-    @task.bash(env=_ENV, retries=2)
+    @task.bash(env=_ENV, append_env=True, retries=2)
     def batch_predict() -> str:
         """Run champion model against every ticker and save PredictionResult rows."""
         return (
             "cd {{ var.value.project_root }} && "
             "python -m stock_prediction_ml.model.batch_predict "
             "--tickers {{ params.tickers | join(' ') }} "
-            "--date {{ ds }}"
+            f"--date {_YESTERDAY}"
         )
 
     materialize_features() >> batch_predict()

@@ -1,12 +1,10 @@
 import argparse
 import logging
-from pathlib import Path
 
 import great_expectations as gx
 import pandas as pd
 
-# Determine Project Root (3 levels up from this file)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -108,9 +106,7 @@ def build_expectation_suite(name: str = "stock_data_expectation_suite"):
 
     # --- Logical price relationships ---
     suite.add_expectation(
-        gx.expectations.ExpectColumnPairValuesAToBeGreaterThanB(
-            column_A="high", column_B="low"
-        )
+        gx.expectations.ExpectColumnPairValuesAToBeGreaterThanB(column_A="high", column_B="low")
     )
 
     # --- Uniqueness & row count ---
@@ -126,7 +122,7 @@ def build_expectation_suite(name: str = "stock_data_expectation_suite"):
             value_set=["AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA"],
         )
     )
-    
+
     suite.add_expectation(
         gx.expectations.ExpectColumnValuesToBeInSet(
             column="source",
@@ -153,14 +149,12 @@ def validate_batch(batch, suite):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Validate stock data using Great Expectations."
-    )
+    parser = argparse.ArgumentParser(description="Validate stock data using Great Expectations.")
 
     parser.add_argument(
         "--input",
-        type=Path,
-        default=PROJECT_ROOT / "data" / "processed" / "combined_eod.parquet",
+        type=str,
+        default=data_path("processed", "combined_eod.parquet"),
         help="Path to the input Parquet file containing stock data.",
     )
 
@@ -173,21 +167,21 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.input.exists():
+    logger.info(f"Reading data from {args.input}...")
+    try:
+        df = pd.read_parquet(args.input, storage_options=storage_options(args.input))
+    except FileNotFoundError:
         logger.error(f"Input file not found: {args.input}")
         return
-
-    logger.info(f"Reading data from {args.input}...")
-    df = pd.read_parquet(args.input)
 
     context = get_context()
     datasource = add_pandas_datasource(context)
     data_asset = add_dataframe_asset(datasource)
     batch_definition = get_batch_definition(data_asset)
-    
+
     # Pass DataFrame directly to get_batch
     batch = get_batch(df, batch_definition)
-    
+
     suite = build_expectation_suite(args.suite_name)
     save_suite(context, suite)
     validation_result = validate_batch(batch, suite)
@@ -203,20 +197,17 @@ def main():
         for result in validation_result["results"]:
             if not result["success"]:
                 expectation_type = result["expectation_config"].type
-                column = result["expectation_config"].kwargs.get(
-                    "column", "N/A"
-                )
+                column = result["expectation_config"].kwargs.get("column", "N/A")
                 result_details = result.get("result", {})
-                logger.info(
-                    f"  - {expectation_type} (column: {column}): {result_details}"
-                )
+                logger.info(f"  - {expectation_type} (column: {column}): {result_details}")
         logger.error("Validation FAILED. File will not be saved.")
-        exit(1) # Exit with error code
+        exit(1)  # Exit with error code
     else:
         logger.info("All expectations passed!")
-        
-        output_path = args.input.parent / "validated_data.parquet"
-        df.to_parquet(output_path, index=False)
+
+        output_path = data_path("processed", "validated_data.parquet")
+        ensure_parent_dir(output_path)
+        df.to_parquet(output_path, index=False, storage_options=storage_options(output_path))
         logger.info(f"Validated data saved to: {output_path}")
 
 

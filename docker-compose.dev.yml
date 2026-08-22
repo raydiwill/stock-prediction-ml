@@ -30,19 +30,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     image: ghcr.io/mlflow/mlflow:v3.6.0
 
     container_name: stock-prediction-mlflow-dev
     ports:
       - "5001:5000"
-    volumes:
-      - mlflow-data:/mlflow
 
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MLFLOW_S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
 
-    command: sh -c "pip install psycopg2-binary && mlflow server --backend-store-uri postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination /mlflow/artifacts --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
+    command: sh -c "pip install psycopg2-binary boto3 && mlflow server --backend-store-uri postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination s3://stock-prediction/dev/mlflow/ --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
 
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
@@ -66,6 +69,43 @@ services:
       timeout: 3s
       retries: 5
 
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: stock-prediction-minio-dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - minio-data:/data
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    command: server /data --console-address ":9001"
+
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: stock-prediction-minio-init-dev
+    depends_on:
+      minio:
+        condition: service_healthy
+
+    environment:
+      MC_HOST_minio: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000
+
+    entrypoint: >
+      /bin/sh -c "
+      mc mb --ignore-existing minio/stock-prediction
+      "
+
   api:
     <<: *common-env
     depends_on:
@@ -82,7 +122,6 @@ services:
     container_name: stock-prediction-fastapi-dev
     volumes:
       - ./src:/usr/local/app/src
-      - ./data:/usr/local/app/data
       - ./configs:/usr/local/app/configs
 
     environment:
@@ -131,17 +170,17 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      # Airflow 3's default SimpleAuthManager ignores `airflow users create`
+      # and prints a random admin password to the logs on every restart.
+      # Use the FAB RBAC auth manager instead so the admin user/password
+      # below are the ones that actually work.
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       ENV_FILE: configs/config.env.dev
-    command: >
+    command: |
       bash -c "
       airflow db migrate &&
-      (airflow users create \
-          --username $$AIRFLOW_ADMIN_USERNAME \
-          --firstname Raydi \
-          --lastname Tran \
-          --role Admin \
-          --email $$AIRFLOW_ADMIN_EMAIL \
-          --password $$AIRFLOW_ADMIN_PASSWORD || true) &&
+      (airflow users create --username $AIRFLOW_ADMIN_USERNAME --firstname Raydi --lastname Tran --role Admin --email $AIRFLOW_ADMIN_EMAIL --password $AIRFLOW_ADMIN_PASSWORD || true) &&
       airflow variables set project_root /usr/local/app
       "
 
@@ -167,6 +206,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$$POSTGRES_USER:$$POSTGRES_PASSWORD@db:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       ENV_FILE: configs/config.env.dev
 
     volumes:
@@ -220,8 +261,7 @@ services:
 
 volumes:
   postgresql_data:
-  mlflow-data:
   redis-data:
-  data:
+  minio-data:
   airflow-logs:
   grafana-data:

@@ -74,11 +74,13 @@ def test_create_features(sample_dataframe):
 
 
 def test_save_feature_data_creates_valid_parquet(sample_dataframe, mocker, tmp_path):
-    mocker.patch("stock_prediction_ml.features.build_features.PROJECT_ROOT", tmp_path)
+    mocker.patch(
+        "stock_prediction_ml.config.storage.settings.data_root", str(tmp_path)
+    )
 
     save_feature_data(sample_dataframe, "test_features.parquet")
 
-    expected_path = tmp_path / "data" / "feature" / "test_features.parquet"
+    expected_path = tmp_path / "feature" / "test_features.parquet"
     assert expected_path.exists()
 
     df_loaded = pd.read_parquet(expected_path)

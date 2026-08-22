@@ -35,6 +35,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     image: ghcr.io/mlflow/mlflow:v3.6.0
     container_name: stock-prediction-mlflow-prod
 
@@ -47,14 +49,14 @@ services:
       - isolated
       - public
 
-    volumes:
-      - mlflow-data:/mlflow
-
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MLFLOW_S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
 
-    command: sh -c "pip install psycopg2-binary && mlflow server --backend-store-uri postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination /mlflow/artifacts --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
+    command: sh -c "pip install psycopg2-binary boto3 && mlflow server --backend-store-uri postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination s3://stock-prediction/prod/mlflow/ --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
 
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
@@ -83,6 +85,51 @@ services:
       retries: 5
 
     restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: stock-prediction-minio-prod
+
+    # No host port publish — internal only.
+    networks:
+      - isolated
+
+    volumes:
+      - minio-data:/data
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    command: server /data --console-address ":9001"
+
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: stock-prediction-minio-init-prod
+    depends_on:
+      minio:
+        condition: service_healthy
+
+    networks:
+      - isolated
+
+    environment:
+      MC_HOST_minio: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000
+
+    entrypoint: >
+      /bin/sh -c "
+      mc mb --ignore-existing minio/stock-prediction
+      "
+
+    restart: "no"
 
   grafana:
     <<: *common-env
@@ -133,12 +180,8 @@ services:
 
     container_name: stock-prediction-fastapi-prod
 
-    # No ./src or ./configs bind mounts — prod runs off what's baked into
-    # the image at build time, not live host files. ./data is mounted
-    # (same as dev) since feature data isn't baked into the image and
-    # ingestion/materialization write to it at runtime.
-    volumes:
-      - ./data:/usr/local/app/data
+    # No bind mounts — prod runs off what's baked into the image at build time.
+    # Data storage is entirely backed by MinIO (s3:// URIs in settings).
 
     networks:
       - isolated
@@ -162,8 +205,6 @@ services:
       target: ui
 
     container_name: stock-prediction-uis-prod
-
-    # No bind mounts, same reasoning as api.
 
     networks:
       - isolated
@@ -195,17 +236,17 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      # Airflow 3's default SimpleAuthManager ignores `airflow users create`
+      # and prints a random admin password to the logs on every restart.
+      # Use the FAB RBAC auth manager instead so the admin user/password
+      # below are the ones that actually work.
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       ENV_FILE: configs/config.env.prod
-    command: >
+    command: |
       bash -c "
       airflow db migrate &&
-      (airflow users create \
-          --username $AIRFLOW_ADMIN_USERNAME \
-          --firstname Raydi \
-          --lastname Tran \
-          --role Admin \
-          --email $AIRFLOW_ADMIN_EMAIL \
-          --password $AIRFLOW_ADMIN_PASSWORD || true) &&
+      (airflow users create --username $AIRFLOW_ADMIN_USERNAME --firstname Raydi --lastname Tran --role Admin --email $AIRFLOW_ADMIN_EMAIL --password $AIRFLOW_ADMIN_PASSWORD || true) &&
       airflow variables set project_root /usr/local/app
       "
 
@@ -236,6 +277,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       ENV_FILE: configs/config.env.prod
 
     volumes:
@@ -262,10 +305,11 @@ services:
 
 volumes:
   postgresql_data:
-  mlflow-data:
   redis-data:
+  minio-data:
   airflow-logs:
   grafana-data:
+  data:
 
 networks:
   isolated:

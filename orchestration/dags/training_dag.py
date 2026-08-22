@@ -20,6 +20,7 @@ _ENV = {
     "PYTHONPATH": "{{ var.value.project_root }}/src",
     "PATH": "{{ var.value.project_root }}/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 }
+_TODAY = "{{ ds }}"
 
 
 @dag(
@@ -47,17 +48,17 @@ _ENV = {
 def training_dag():
     """Train CatBoost model and promote if thresholds are met."""
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def train_model() -> str:
         return (
             f"cd {PROJECT_ROOT} && "
             "python -m stock_prediction_ml.model.train "
             "--config {{ params.config_path }} "
             "--start-date {{ params.start_date or macros.ds_add(ds, -180) }} "
-            "--end-date {{ ds }}"
+            f"--end-date {_TODAY}"
         )
 
-    @task.bash(env=_ENV)
+    @task.bash(env=_ENV, append_env=True)
     def promote_model() -> str:
         return (
             f"cd {PROJECT_ROOT} && "

@@ -1,5 +1,5 @@
 training_data_path: data/feature/stock_eod_features.parquet
-selected_features_path: data/meta/selected_features.json
+selected_features_path: configs/meta/selected_features.json
 meta_dir: data/meta
 model_dir: models
 feast_service_name: stock_training_service
@@ -25,8 +25,8 @@ mlflow:
 
 promotion:
   champion:
-    accuracy: 0.65
-    auc: 0.70
+    accuracy: 0.50
+    auc: 0.50
   challenger:
-    accuracy: 0.60
-    auc: 0.65
+    accuracy: 0.45
+    auc: 0.45

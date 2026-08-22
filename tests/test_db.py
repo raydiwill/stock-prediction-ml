@@ -367,13 +367,13 @@ def sample_df():
 
 
 def test_save_to_parquet_default_path(mocker, sample_df, tmp_path):
-    """When output_path is None, file lands under PROJECT_ROOT/data/processed/."""
-    mocker.patch("stock_prediction_ml.db.export.PROJECT_ROOT", tmp_path)
+    """When output_path is None, file lands under data_root/processed/."""
+    mocker.patch(
+        "stock_prediction_ml.config.storage.settings.data_root", str(tmp_path)
+    )
     save_to_parquet(sample_df, "2024-01-01", "2024-01-02")
 
-    file_path = (
-        tmp_path / "data" / "processed" / "history_2024-01-01_2024-01-02.parquet"
-    )
+    file_path = tmp_path / "processed" / "history_2024-01-01_2024-01-02.parquet"
 
     assert file_path.exists()
 

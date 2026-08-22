@@ -1,17 +1,16 @@
 from datetime import timedelta
-from pathlib import Path
 
 from feast import FeatureView, Field, FileSource
 from feast.types import Float32, Int32
 
+from stock_prediction_ml.config.settings import settings
+from stock_prediction_ml.config.storage import data_path
 from stock_prediction_ml.feast_repo.entities import stock
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-
 stock_features_source = FileSource(
-    path=str(PROJECT_ROOT / "data" / "feature" / "stock_eod_features.parquet"),
+    path=data_path("feature", "stock_eod_features.parquet"),
     timestamp_field="date",
+    **({"s3_endpoint_override": settings.s3_endpoint_url} if settings.s3_endpoint_url else {}),
 )
 
 

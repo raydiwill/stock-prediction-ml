@@ -123,12 +123,14 @@ def test_save_to_parquet_writes_file(fake_stock_data, tmp_path, mocker):
     df = process_dataframe(fake_stock_data)
     filename = "test.parquet"
 
-    # Mock PROJECT_ROOT to point to tmp_path
-    mocker.patch("stock_prediction_ml.marketstack.pull.PROJECT_ROOT", tmp_path)
+    # Mock data_root to point to tmp_path
+    mocker.patch(
+        "stock_prediction_ml.config.storage.settings.data_root", str(tmp_path)
+    )
 
     save_to_parquet(df, filename)
 
-    expected_path = tmp_path / "data" / "raw" / filename
+    expected_path = tmp_path / "raw" / filename
     assert expected_path.exists()
 
     loaded = pd.read_parquet(expected_path)
@@ -139,7 +141,7 @@ def test_save_to_parquet_writes_file(fake_stock_data, tmp_path, mocker):
 def test_combine_and_save_to_parquet(tmp_path, mocker):
     """Test combining multiple parquet files."""
     # 1. Setup fake data directory
-    raw_dir = tmp_path / "data" / "raw"
+    raw_dir = tmp_path / "raw"
     raw_dir.mkdir(parents=True)
 
     df1 = pd.DataFrame({"symbol": ["AAPL"], "close": [100]})
@@ -148,14 +150,16 @@ def test_combine_and_save_to_parquet(tmp_path, mocker):
     df1.to_parquet(raw_dir / "AAPL.parquet")
     df2.to_parquet(raw_dir / "MSFT.parquet")
 
-    # 2. Mock PROJECT_ROOT
-    mocker.patch("stock_prediction_ml.marketstack.pull.PROJECT_ROOT", tmp_path)
+    # 2. Mock data_root
+    mocker.patch(
+        "stock_prediction_ml.config.storage.settings.data_root", str(tmp_path)
+    )
 
     # 3. Run combine function
     combine_and_save_to_parquet()
 
     # 4. Assert output exists
-    output_path = tmp_path / "data" / "processed" / "combined_eod.parquet"
+    output_path = tmp_path / "processed" / "combined_eod.parquet"
     assert output_path.exists()
 
     combined_df = pd.read_parquet(output_path)
