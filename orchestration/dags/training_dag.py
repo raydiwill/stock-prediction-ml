@@ -20,8 +20,7 @@ _ENV = {
     "PYTHONPATH": "{{ var.value.project_root }}/src",
     "PATH": "{{ var.value.project_root }}/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 }
-_DS = "((ds | default(none, true)) or macros.datetime.utcnow().strftime('%Y-%m-%d'))"
-_TODAY = f"{{{{ {_DS} }}}}"
+_TODAY = "{{ ds }}"
 
 
 @dag(
@@ -55,7 +54,7 @@ def training_dag():
             f"cd {PROJECT_ROOT} && "
             "python -m stock_prediction_ml.model.train "
             "--config {{ params.config_path }} "
-            f"--start-date {{{{ params.start_date or macros.ds_add({_DS}, -180) }}}} "
+            "--start-date {{ params.start_date or macros.ds_add(ds, -180) }} "
             f"--end-date {_TODAY}"
         )
 

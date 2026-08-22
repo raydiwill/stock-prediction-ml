@@ -33,8 +33,7 @@ _ENV = {
     "PYTHONPATH": "{{ var.value.project_root }}/src",
     "PATH": "{{ var.value.project_root }}/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 }
-_DS = "((ds | default(none, true)) or macros.datetime.utcnow().strftime('%Y-%m-%d'))"
-_YESTERDAY = f"{{{{ macros.ds_add({_DS}, -1) }}}}"
+_YESTERDAY = "{{ macros.ds_add(ds, -1) }}"
 
 
 @dag(
