@@ -25,7 +25,6 @@ _ENV = {
 }
 _START_DATE = "{{ macros.ds_add(ds, -180) }}"
 _END_DATE = "{{ ds }}"
-_HISTORY_FILE = f"data/processed/history_{_START_DATE}_{_END_DATE}.parquet"
 
 
 @dag(
@@ -40,20 +39,23 @@ def feature_engineering_dag():
 
     @task.bash(env=_ENV, append_env=True)
     def export_from_db() -> str:
+        """Exports to db.export's own data_path() default and prints the
+        resolved path as the last stdout line, which Airflow auto-pushes to
+        XCom (BashOperator's default do_xcom_push=True)."""
         return (
             "cd {{ var.value.project_root }} && "
             "python -m stock_prediction_ml.db.export "
             f"--start_date {_START_DATE} "
-            f"--end_date {_END_DATE} "
-            f"--output {_HISTORY_FILE}"
+            f"--end_date {_END_DATE}"
         )
 
     @task.bash(env=_ENV, append_env=True)
     def build_features() -> str:
+        history_file = "{{ ti.xcom_pull(task_ids='export_from_db') }}"
         return (
             "cd {{ var.value.project_root }} && "
             "python -m stock_prediction_ml.features.build_features "
-            f"--input_file {_HISTORY_FILE}"  
+            f"--input_file {history_file}"
         )
 
     @task.bash(env=_ENV, append_env=True)
