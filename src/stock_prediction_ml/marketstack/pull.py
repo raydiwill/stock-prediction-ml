@@ -18,9 +18,7 @@ API_URL = "https://api.marketstack.com/v2"
 
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +50,8 @@ def fetch_ticker_data(
     api_url = f"{API_URL}/eod"
     all_data = []
     offset = 0
+    rate_limit_retries = 0
+    max_rate_limit_retries = 5
 
     logger.info(f"Fetching data for {symbol}...")
 
@@ -70,14 +70,27 @@ def fetch_ticker_data(
             response = requests.get(api_url, params=params)
 
             if response.status_code == 429:
-                logger.warning("Rate limit hit. Waiting 1 second...")
+                error_code = response.json().get("error", {}).get("code", "")
+                if error_code == "usage_limit_reached":
+                    raise RuntimeError(f"MarketStack monthly usage limit reached: {response.text}")
+
+                rate_limit_retries += 1
+                if rate_limit_retries > max_rate_limit_retries:
+                    raise RuntimeError(
+                        f"Rate limit exceeded {max_rate_limit_retries} retries "
+                        f"for {symbol}; giving up."
+                    )
+                logger.warning(
+                    f"Rate limit hit ({rate_limit_retries}/{max_rate_limit_retries}). "
+                    "Waiting 1 second..."
+                )
                 time.sleep(1)
                 continue
 
+            rate_limit_retries = 0
+
             if response.status_code != 200:
-                logger.error(
-                    f"API call failed: {response.status_code} - {response.text}"
-                )
+                logger.error(f"API call failed: {response.status_code} - {response.text}")
                 break
 
             data = response.json()
@@ -100,6 +113,9 @@ def fetch_ticker_data(
             offset += limit
             # small sleep to be nice to the API
             time.sleep(0.2)
+
+        except RuntimeError:
+            raise
 
         except Exception as e:
             logger.error(f"Error fetching {symbol}: {e}")
@@ -188,17 +204,20 @@ def save_to_parquet(df: pd.DataFrame, filename: str) -> None:
     output_path = data_path("raw", filename)
 
     ensure_parent_dir(output_path)
-    df.to_parquet(output_path, index=False, storage_options=storage_options())
+    df.to_parquet(output_path, index=False, storage_options=storage_options(output_path))
     logger.info(f"Saved {len(df)} rows to {output_path}")
 
 
-def combine_and_save_to_parquet(path: str | None = None) -> None:
+def combine_and_save_to_parquet(path: str | None = None, files: list[str] | None = None) -> None:
     """
-    Read all parquet files from a directory, combine them, and save to processed folder.
+    Read parquet files, combine them, and save to processed folder.
 
     Args:
         path (str | None, optional): Input directory containing raw parquet files.
-            Defaults to data_path("raw").
+            Defaults to data_path("raw"). Ignored if `files` is provided.
+        files (list[str] | None, optional): Explicit list of parquet files to
+            combine. When provided, `path` is ignored and stale files left
+            over from previous runs in the raw directory are not picked up.
 
     Returns:
         None
@@ -208,25 +227,26 @@ def combine_and_save_to_parquet(path: str | None = None) -> None:
         # Reads all .parquet files in data/raw, combines them,
         # and saves 'combined_eod.parquet' in data/processed.
     """
-    # Determine Input Directory
-    input_dir = path if path is not None else "raw"
+    if files is not None:
+        parquet_files = files
+    else:
+        # Determine Input Directory
+        input_dir = path if path is not None else "raw"
 
-    # Find all parquet files
-    parquet_files = [
-        f for f in list_parquet(input_dir) if "combined_eod" not in f
-    ]
+        # Find all parquet files
+        parquet_files = [f for f in list_parquet(input_dir) if "combined_eod" not in f]
 
     if not parquet_files:
-        logger.warning(f"No .parquet files found in {input_dir}")
+        logger.warning("No .parquet files to combine.")
         return
 
-    logger.info(f"Found {len(parquet_files)} files in {input_dir}. Combining...")
+    logger.info(f"Found {len(parquet_files)} files. Combining...")
 
     # Read and Combine
     dfs = []
     for file in parquet_files:
         try:
-            df = pd.read_parquet(file, storage_options=storage_options())
+            df = pd.read_parquet(file, storage_options=storage_options(file))
             if not df.empty:
                 dfs.append(df)
         except Exception as e:
@@ -241,25 +261,21 @@ def combine_and_save_to_parquet(path: str | None = None) -> None:
     # Save to Processed
     output_path = data_path("processed", "combined_eod.parquet")
     ensure_parent_dir(output_path)
-    combined_df.to_parquet(output_path, index=False, storage_options=storage_options())
+    combined_df.to_parquet(output_path, index=False, storage_options=storage_options(output_path))
 
     logger.info(f"Successfully combined {len(combined_df)} rows from {len(dfs)} files.")
     logger.info(f"Saved to {output_path}")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Fetch EOD stock data from MarketStack API"
-    )
+    parser = argparse.ArgumentParser(description="Fetch EOD stock data from MarketStack API")
     parser.add_argument(
         "--tickers",
         nargs="+",
         default=["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA"],
         help="List of stock symbols",
     )
-    parser.add_argument(
-        "--start_date", default="2012-05-18", help="Start date in YYYY-MM-DD"
-    )
+    parser.add_argument("--start_date", default="2012-05-18", help="Start date in YYYY-MM-DD")
     parser.add_argument(
         "--end_date",
         default=f"{(datetime.now() - timedelta(1)).strftime('%Y-%m-%d')}",
@@ -274,6 +290,7 @@ def main():
         if not api_key:
             raise ValueError("MARKETSTACK_API_KEY not found in configuration.")
 
+        fetched_files = []
         for symbol in args.tickers:
             # 1. Fetch all pages for this symbol
             raw_data = fetch_ticker_data(
@@ -286,12 +303,18 @@ def main():
             # 2. Process
             df = process_dataframe(raw_data)
 
+            if df.empty:
+                logger.warning(f"No data returned for {symbol}; nothing to save.")
+                continue
+
             # 3. Save individually
             filename = f"{symbol}_eod.parquet"
             save_to_parquet(df, filename)
+            fetched_files.append(data_path("raw", filename))
 
-        # 4. Combine all downloaded files
-        combine_and_save_to_parquet()
+        # 4. Combine only this run's downloaded files (not stale ones from
+        # previous runs still sitting in the raw directory)
+        combine_and_save_to_parquet(files=fetched_files)
 
     except Exception as error:
         logger.error(f"Critical error: {error}")

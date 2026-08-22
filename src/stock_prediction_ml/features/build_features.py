@@ -42,7 +42,7 @@ def read_validated_data(
 
     logger.info(f"Reading validated data from: {file_path}")
 
-    df = pd.read_parquet(file_path, storage_options=storage_options())
+    df = pd.read_parquet(file_path, storage_options=storage_options(file_path))
     logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
 
     # Ensure date is datetime
@@ -146,9 +146,7 @@ def create_lag_features(df: pd.DataFrame, lag_days: list[int]) -> pd.DataFrame:
     return df
 
 
-def create_rolling_features(
-    df: pd.DataFrame, rolling_windows: list[int]
-) -> pd.DataFrame:
+def create_rolling_features(df: pd.DataFrame, rolling_windows: list[int]) -> pd.DataFrame:
     """
     Creates rolling mean and standard deviation features for returns.
 
@@ -196,9 +194,7 @@ def create_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df["day_of_month"] = df["date"].dt.day
     df["quarter"] = df["date"].dt.quarter
     df["is_quarter_end"] = df["date"].dt.is_quarter_end.astype(int)
-    logger.info(
-        "Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end"
-    )
+    logger.info("Time features created: day_of_week, month, day_of_month, quarter, is_quarter_end")
     return df
 
 
@@ -337,9 +333,7 @@ def create_features(
         logger.info(f"Dropped {dropped_nan} rows with NaN values")
 
     final_shape = df.shape
-    logger.info(
-        f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})"
-    )
+    logger.info(f"Feature creation complete. Final shape: {final_shape} (from {initial_shape})")
     logger.info(f"Total features created: {final_shape[1] - initial_shape[1]}")
 
     return df
@@ -371,7 +365,7 @@ def save_feature_data(
 
     ensure_parent_dir(output_path)
     logger.info(f"Saving feature data to: {output_path}")
-    df.to_parquet(output_path, index=False, storage_options=storage_options())
+    df.to_parquet(output_path, index=False, storage_options=storage_options(output_path))
     logger.info(f"Successfully saved {len(df)} rows to {output_path}")
 
 

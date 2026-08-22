@@ -48,7 +48,7 @@ def read_validated_file(path: str | None = None) -> pd.DataFrame:
     if path is None:
         path = data_path("processed", "validated_data.parquet")
 
-    df = pd.read_parquet(path, storage_options=storage_options())
+    df = pd.read_parquet(path, storage_options=storage_options(path))
 
     return df
 
@@ -386,9 +386,7 @@ def ingest_records_in_batches(orm_objects, batch_size=None):
 
             except IntegrityError as e:
                 db.rollback()
-                logger.warning(
-                    f"Batch {batch_num} failed: {e}. Attempting row-by-row insert..."
-                )
+                logger.warning(f"Batch {batch_num} failed: {e}. Attempting row-by-row insert...")
 
                 # Fallback: insert one-by-one to skip duplicates
                 for obj in batch:
@@ -503,9 +501,7 @@ def main(path: str | None = None, dry_run: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Ingest validated stock data into the database."
-    )
+    parser = argparse.ArgumentParser(description="Ingest validated stock data into the database.")
     parser.add_argument(
         "--path",
         type=str,

@@ -341,7 +341,7 @@ def load_training_data_from_feast(
     store = FeatureStore(str(feast_repo_path))
 
     raw_feature_path = data_path("feature", "stock_eod_features.parquet")
-    raw_df = pd.read_parquet(raw_feature_path, storage_options=storage_options())
+    raw_df = pd.read_parquet(raw_feature_path, storage_options=storage_options(raw_feature_path))
 
     # Prepare entity for point-in-time Feast
     entity_df = raw_df[["symbol", "date"]].copy()
@@ -355,8 +355,7 @@ def load_training_data_from_feast(
 
     if entity_df.empty:
         raise ValueError(
-            f"No data remaining after date filter "
-            f"(start_date={start_date}, end_date={end_date})"
+            f"No data remaining after date filter (start_date={start_date}, end_date={end_date})"
         )
 
     logger.info(f"Entity DataFrame shape: {entity_df.shape}")
@@ -611,6 +610,7 @@ def plot_feature_importance(model, feature_names, top_n=20, save_path=None):
     # Add name
     save_path = save_path / "feature_importance.png"
     save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -646,6 +646,7 @@ def plot_confusion_matrix(y_true, y_pred, save_path=None):
     # Add name
     save_path = save_path / "confusion_matrix.png"
     save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -688,6 +689,7 @@ def plot_roc_curve(y_true, y_proba, save_path=None):
     # Add name
     save_path = save_path / "roc_curve.png"
     save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -999,7 +1001,7 @@ if __name__ == "__main__":
         "--end-date",
         type=str,
         default=None,
-        help="Latest date to include in training data (YYYY-MM-DD). " \
+        help="Latest date to include in training data (YYYY-MM-DD). "
         "Omit to include up to latest available.",
     )
     args = parser.parse_args()

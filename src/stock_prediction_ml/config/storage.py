@@ -40,18 +40,23 @@ def ensure_parent_dir(path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
 
-def storage_options() -> dict:
+def storage_options(path: str | Path | None = None) -> dict:
     """
     Return fsspec kwargs for pandas read/write operations.
 
-    For local storage, returns empty dict (default behavior).
-    For S3/MinIO, returns credentials and endpoint configuration.
+    For local paths, returns empty dict (default behavior).
+    For S3/MinIO paths, returns credentials and endpoint configuration.
+
+    Args:
+        path: The path being read/written, as returned by data_path(), or a
+            caller-supplied path. Defaults to settings.data_root when omitted.
 
     Returns:
         Dict with keys: 'key', 'secret', 'client_kwargs' (if S3),
         or empty dict for local storage.
     """
-    if settings.data_root.startswith("s3://"):
+    target = str(path) if path is not None else settings.data_root
+    if target.startswith("s3://"):
         return {
             "key": settings.aws_access_key_id,
             "secret": settings.aws_secret_access_key,
@@ -72,9 +77,9 @@ def list_parquet(prefix: str) -> list[str]:
     """
     prefix_path = data_path(prefix)
 
-    if settings.data_root.startswith("s3://"):
+    if prefix_path.startswith("s3://"):
         # S3: use fsspec to list objects
-        fs = fsspec.filesystem("s3", **storage_options())
+        fs = fsspec.filesystem("s3", **storage_options(prefix_path))
         # Remove s3:// prefix for fsspec operations
         s3_path = prefix_path.replace("s3://", "")
         try:
