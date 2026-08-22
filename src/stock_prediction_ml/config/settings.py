@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Supported stock symbols
     valid_symbols: list[str] = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA"]
 
+    # Storage configuration
+    data_root: str = "data"
+    s3_endpoint_url: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+
     cors_origins: list[str]
 
     model_config = SettingsConfigDict(

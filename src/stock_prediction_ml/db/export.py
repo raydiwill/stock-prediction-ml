@@ -14,10 +14,9 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import select
 
+from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
 from stock_prediction_ml.db.models import RawStockData
 from stock_prediction_ml.db.session import SessionLocal
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,9 +69,7 @@ def export_validated_data(
         )
         results = db.execute(query).scalars().all()
 
-    rows = [
-        {column: getattr(row, column) for column in EXPORT_COLUMNS} for row in results
-    ]
+    rows = [{column: getattr(row, column) for column in EXPORT_COLUMNS} for row in results]
 
     df = pd.DataFrame.from_dict(rows) if rows else pd.DataFrame(columns=EXPORT_COLUMNS)
     df = df.sort_values(by=["symbol", "date"]).reset_index(drop=True)
@@ -85,44 +82,45 @@ def export_validated_data(
 
 
 def save_to_parquet(
-    df: pd.DataFrame, start_date: str, end_date: str, output_path: Path | None = None
-) -> None:
+    df: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+    output_path: str | Path | None = None,
+) -> str:
     """Write DataFrame to parquet, creating parent dirs if needed.
 
     Hint: same pattern as save_feature_data in build_features.py
-    """
-    file_name = f"history_{start_date}_{end_date}.parquet"
 
+    Returns:
+        The resolved output path actually written to.
+    """
     if output_path is None:
-        output_path = PROJECT_ROOT / "data" / "processed" / file_name
+        file_name = f"history_{start_date}_{end_date}.parquet"
+        output_path = data_path("processed", file_name)
     else:
+        output_path = Path(output_path)
         if output_path.suffix != ".parquet":
             output_path = output_path.with_suffix(".parquet")
+        output_path = str(output_path)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_parent_dir(output_path)
     logger.info(f"Saving exported data from DB to: {output_path}")
-    df.to_parquet(output_path, index=False)
+    df.to_parquet(output_path, index=False, storage_options=storage_options(output_path))
     logger.info(f"Successfully saved {len(df)} rows to {output_path}")
-    logger.debug(f"File size: {output_path.stat().st_size / 1024:.2f} KB")
+    return output_path
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Export raw data from DB with date range."
-    )
+    parser = argparse.ArgumentParser(description="Export raw data from DB with date range.")
     parser.add_argument("--start_date", type=str, default=None)
     parser.add_argument("--end_date", type=str, default=None)
-    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--output", type=str, default=None)
 
     args = parser.parse_args()
 
     # Resolve defaults once, keep everything as strings
-    start_date = args.start_date or (datetime.today() - timedelta(days=180)).strftime(
-        "%Y-%m-%d"
-    )
-    end_date = args.end_date or (datetime.today() - timedelta(days=1)).strftime(
-        "%Y-%m-%d"
-    )
+    start_date = args.start_date or (datetime.today() - timedelta(days=180)).strftime("%Y-%m-%d")
+    end_date = args.end_date or (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     logger.info(f"Exporting data from {start_date} to {end_date}")
 
@@ -134,8 +132,11 @@ def main() -> None:
             return
 
         output = args.output
-        save_to_parquet(df, start_date, end_date, output)
+        output_path = save_to_parquet(df, start_date, end_date, output)
         logger.info("Export completed successfully.")
+        # Last stdout line: picked up by Airflow's BashOperator XCom auto-push
+        # so downstream tasks can read the exact path that was written.
+        print(output_path)
 
     except Exception as e:
         logger.error(str(e))

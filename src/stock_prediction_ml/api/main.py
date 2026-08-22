@@ -65,6 +65,7 @@ from stock_prediction_ml.api.utils import check_dependencies, next_trading_day
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.db.models import PredictionResult, RawStockData
 from stock_prediction_ml.db.session import get_db
+from stock_prediction_ml.db.setup_db import create_all_tables
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -114,6 +115,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("=" * 60)
     logger.info("Starting Stock Prediction API...")
     logger.info("=" * 60)
+
+    # Ensure DB tables exist (no-op if already created)
+    try:
+        logger.info("Ensuring database tables exist...")
+        create_all_tables()
+    except Exception as e:
+        logger.error(f"Failed to create database tables: {e}")
 
     # Initialize MLflow client (tracking URI already set at module import)
     try:

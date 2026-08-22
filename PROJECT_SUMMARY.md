@@ -462,11 +462,13 @@ Feature vector (34 features after encoding `symbol`):
 - **Graceful persistence**: DB write failures are logged but don't block the prediction response
 
 ### Future tech debt
+- **DB table bootstrap**: `create_all_tables()` currently runs inside the FastAPI `lifespan()` startup hook, wrapped in a try/except that only logs on failure — meant to auto-create tables for a fresh clone's first `make up-dev`. Move this into a dedicated one-shot step (a compose `init-db` service like `minio-init`, a `make init-db` target, or an Alembic `upgrade head` in the entrypoint) so schema bootstrap isn't coupled to every API restart and failures surface at boot instead of at first request.
 - **API integration tests**: Add `@pytest.mark.integration` tests with real Feast online store (not mocked)
 - **API data materialization**: Online store needs recent date coverage for production readiness
 - **Production Feast tests**: Add integration tests using production feature store (not temp fixtures)
-- **Incremental materialization**: Implement daily `materialize-incremental` workflow for feature updates
+- **Fresh-clone Feast bootstrap**: `feature_engineering_dag` runs `feast materialize-incremental`, which only pushes rows since Feast's last-materialized watermark. A fresh clone has no prior watermark and an empty online store, so the first run needs an explicit backfill (e.g. `feast materialize <start> <end>` once) before incremental runs have anything meaningful to build on. Needs a bootstrap step (part of `make init`, or a one-time task) so a new contributor's end-to-end spin-up actually has online-store data to test against.
 - **Airflow integration**: Manual CLI execution; needs orchestration for daily retraining
+- **`@task.bash` → `@task.docker` migration**: `feature_engineering_dag`'s tasks currently pass the resolved history-file path between `export_from_db` and `build_features` via Airflow XCom (BashOperator auto-pushes the last stdout line). This pattern is executor-agnostic and will keep working unchanged when these tasks move to `@task.docker` (see the DAG's own TODO) — noting it here so the XCom wiring isn't accidentally reworked during that migration.
 - **Monitoring**: Grafana/Prometheus pull model for API metrics (no Pushgateway needed yet—batch job push metrics deferred until Airflow DAGs expose metrics endpoints)
 - **Containerization**: Docker Compose for local dev and production deployment
   - Dev: `docker-compose.dev.yml` — bind-mount source code for fast iteration
