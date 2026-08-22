@@ -20,6 +20,8 @@ _ENV = {
     "PYTHONPATH": "{{ var.value.project_root }}/src",
     "PATH": "{{ var.value.project_root }}/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 }
+_DS = "((ds | default(none, true)) or macros.datetime.utcnow().strftime('%Y-%m-%d'))"
+_TODAY = f"{{{{ {_DS} }}}}"
 
 
 @dag(
@@ -53,8 +55,8 @@ def training_dag():
             f"cd {PROJECT_ROOT} && "
             "python -m stock_prediction_ml.model.train "
             "--config {{ params.config_path }} "
-            "--start-date {{ params.start_date or macros.ds_add(ds, -180) }} "
-            "--end-date {{ ds }}"
+            f"--start-date {{{{ params.start_date or macros.ds_add({_DS}, -180) }}}} "
+            f"--end-date {_TODAY}"
         )
 
     @task.bash(env=_ENV, append_env=True)

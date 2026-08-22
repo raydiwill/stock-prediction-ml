@@ -33,6 +33,8 @@ _ENV = {
     "PYTHONPATH": "{{ var.value.project_root }}/src",
     "PATH": "{{ var.value.project_root }}/.venv/bin:/usr/local/bin:/usr/bin:/bin",
 }
+_DS = "((ds | default(none, true)) or macros.datetime.utcnow().strftime('%Y-%m-%d'))"
+_YESTERDAY = f"{{{{ macros.ds_add({_DS}, -1) }}}}"
 
 
 @dag(
@@ -71,7 +73,7 @@ def prediction_dag():
             "cd {{ var.value.project_root }} && "
             "python -m stock_prediction_ml.model.batch_predict "
             "--tickers {{ params.tickers | join(' ') }} "
-            "--date {{ ds }}"
+            f"--date {_YESTERDAY}"
         )
 
     materialize_features() >> batch_predict()
