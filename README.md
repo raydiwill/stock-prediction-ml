@@ -31,6 +31,7 @@
 | Airflow Orchestration | ✅ Complete |
 | Docker Deployment | ✅ Complete |
 | Monitoring (Grafana) | ✅ Complete |
+| Object Storage (MinIO) | ✅ Complete |
 
 > **Note:** Grafana reads directly from the existing Postgres app database (`RawStockData`, `PredictionResult`) — there's no separate metrics-collection pipeline yet. Prometheus (API latency/error-rate/infra metrics) is a documented future step, not built.
 
@@ -54,7 +55,7 @@ The system is organized into four layers:
 |-------|-----------|
 | **Orchestration** | Apache Airflow (4 DAGs: ingestion, features, training, prediction) |
 | **ML Pipeline** | Data Ingestion → Great Expectations Validation → Feature Engineering → Model Training |
-| **Storage & Management** | Parquet Files, SQLite DB, Feast Feature Store, MLflow Model Registry |
+| **Storage & Management** | MinIO (S3-compatible), Postgres DB, Feast Feature Store, MLflow Model Registry |
 | **Serving & UI** | FastAPI REST API → Streamlit Dashboard |
 
 ---
@@ -114,6 +115,11 @@ A **portfolio project** demonstrating production ML practices for financial time
 | **SQLAlchemy** | ORM for prediction audit trail and stock data storage |
 | **Pydantic** | Request/response schema validation |
 | **Docker** *(planned)* | Containerization for deployment |
+
+### Storage
+| Technology | Purpose |
+|------------|---------|
+| **MinIO** | S3-compatible object storage for pipeline data, Feast offline store, and MLflow artifacts |
 
 ---
 
@@ -249,6 +255,8 @@ make init-prod
 | MLflow | http://localhost:5001 |
 | Airflow | http://localhost:8080 |
 | Grafana | http://localhost:3000 |
+| MinIO Console | http://localhost:9001 |
+| MinIO API | http://localhost:9000 |
 
 **Services (Prod):**
 | Service | Port |
@@ -258,6 +266,44 @@ make init-prod
 | MLflow | internal-only |
 | Airflow | 9080 |
 | Grafana | 9300 |
+| MinIO | internal-only |
+
+---
+
+## Object Storage (MinIO)
+
+All pipeline data — raw/processed/feature parquet files, the Feast offline store, and MLflow
+artifacts — lives in **MinIO**, an S3-compatible object store, instead of a bind-mounted `./data`
+folder. This keeps every service (`api`, `ui`, `airflow`, `mlflow`) reading and writing through
+the same network-accessible storage, with no host filesystem dependency.
+
+**How it's organized:**
+- A single bucket, `stock-prediction`, shared across environments
+- Paths are scoped by an environment prefix: `dev/raw/`, `dev/processed/`, `dev/feature/`,
+  `dev/mlflow/` locally; `prod/...` in production
+- `configs/config.env.dev` sets `DATA_ROOT=s3://stock-prediction/dev`; the app resolves every
+  data path through `data_path()` in [`config/storage.py`](src/stock_prediction_ml/config/storage.py),
+  so nothing hardcodes `s3://` or local paths directly
+- The `minio-init` service creates the bucket idempotently on `make up-dev` — no manual setup
+  needed
+
+**Credentials** (`configs/config.env.dev` / `.prod`):
+```bash
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin       # prod: use strong, unique credentials
+S3_ENDPOINT_URL=http://minio:9000
+MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+```
+
+**Browsing storage:** open the MinIO Console at http://localhost:9001 (dev) and log in with
+`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` to inspect buckets, or use the `mc` CLI against
+`http://localhost:9000`.
+
+**Switching a script to local storage** (e.g. for quick local debugging without Docker): set
+`DATA_ROOT=data` instead of an `s3://` URI in your environment — `data_path()` falls back to
+plain local paths automatically, no code changes needed.
 
 ---
 
@@ -266,7 +312,7 @@ make init-prod
 ```
 src/stock_prediction_ml/
 ├── api/             # FastAPI endpoints + middleware + schema
-├── config/          # Centralized Pydantic settings
+├── config/          # Centralized Pydantic settings + storage.py (MinIO/S3 path abstraction)
 ├── feast_repo/      # Feature store definitions + services
 ├── model/           # Training pipeline + MLflow registry + pyfunc wrapper
 ├── features/        # Feature engineering (30+ indicators)

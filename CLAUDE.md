@@ -39,11 +39,12 @@ make airflow-up
 make down-dev
 ```
 
-## Current Focus
+## Active Work
 
-**Next Tasks**:
-- **Logging**: Switch from stdlib `logging` to `loguru` — simpler API, no handler boilerplate, immune to Alembic's `disable_existing_loggers`
-- **Monitoring (deferred)**: Prometheus for API latency/error-rate/infra metrics. Grafana dashboards reading directly from Postgres (`RawStockData`, `PredictionResult`) are done — see `grafana/`.
+Work is tracked as numbered plans in [`.claude/plans/`](.claude/plans/), one file per initiative
+(e.g. `01-minio-object-storage.md`). Check that directory for what's in flight and what's next —
+don't rely on this file to say what the current focus is, since it goes stale the moment a plan
+finishes.
 
 ## Code Style
 
@@ -60,6 +61,18 @@ make down-dev
 model = mlflow.pyfunc.load_model("models:/stock_prediction_classifier@champion")
 predictions = model.predict(df)  # Encoding handled internally
 ```
+
+### Storage Path Resolution (MinIO/S3 or local)
+```python
+from stock_prediction_ml.config.storage import data_path, storage_options
+
+path = data_path("processed", "combined_eod.parquet")  # local path or s3:// URI
+df.to_parquet(path, index=False, storage_options=storage_options(path))
+```
+Never hardcode `PROJECT_ROOT / "data" / ...` for pipeline data — always resolve through
+`data_path()` so the same code works against local disk (`DATA_ROOT=data`) and MinIO
+(`DATA_ROOT=s3://stock-prediction/dev`). Pass the resolved path into `storage_options()`
+so it scopes credentials to that path, not the global `DATA_ROOT`.
 
 ### Feast Feature Retrieval
 ```python
@@ -85,7 +98,7 @@ def mock_model(mocker):
 ```
 src/stock_prediction_ml/
 ├── api/           # FastAPI endpoints (main.py, schema.py)
-├── config/        # Settings via Pydantic (settings.py)
+├── config/        # Settings via Pydantic (settings.py) + storage.py (MinIO/S3 path abstraction)
 ├── feast_repo/    # Feature store definitions
 ├── model/         # Training pipeline (train.py)
 ├── features/      # Feature engineering
