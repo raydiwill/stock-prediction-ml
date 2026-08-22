@@ -49,9 +49,6 @@ services:
       - isolated
       - public
 
-    volumes:
-      - mlflow-data:/mlflow
-
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -308,7 +305,6 @@ services:
 
 volumes:
   postgresql_data:
-  mlflow-data:
   redis-data:
   minio-data:
   airflow-logs:

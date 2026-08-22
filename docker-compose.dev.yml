@@ -37,8 +37,6 @@ services:
     container_name: stock-prediction-mlflow-dev
     ports:
       - "5001:5000"
-    volumes:
-      - mlflow-data:/mlflow
 
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -263,7 +261,6 @@ services:
 
 volumes:
   postgresql_data:
-  mlflow-data:
   redis-data:
   minio-data:
   airflow-logs:
