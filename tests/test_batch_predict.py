@@ -132,9 +132,7 @@ class TestFetchFeatures:
         mock_store = mocker.patch(
             "stock_prediction_ml.model.batch_predict.FeatureStore"
         ).return_value
-        mock_store.get_online_features.return_value.to_df.return_value = (
-            sample_features_df
-        )
+        mock_store.get_online_features.return_value.to_df.return_value = sample_features_df
 
         df = fetch_features(["AAPL", "MSFT"])
         expected = ["symbol", "sma_20", "rsi_14", "day_of_week", "month"]
@@ -241,17 +239,11 @@ class TestPersistResults:
             rows.append(row)
         return rows
 
-    def test_returns_correct_success_fail_counts(
-        self, mocker, mock_db_session, sample_result_df
-    ):
+    def test_returns_correct_success_fail_counts(self, mocker, mock_db_session, sample_result_df):
         rows = self._make_db_rows(mocker, ["AAPL", "MSFT"])
-        mock_db_session.execute.return_value.scalars.return_value.all.return_value = (
-            rows
-        )
+        mock_db_session.execute.return_value.scalars.return_value.all.return_value = rows
 
-        ok, fail = persist_results(
-            sample_result_df, ["AAPL", "MSFT"], "2024-01-01", "v1"
-        )
+        ok, fail = persist_results(sample_result_df, ["AAPL", "MSFT"], "2024-01-01", "v1")
         assert ok == 2
         assert fail == 0
 
@@ -259,35 +251,23 @@ class TestPersistResults:
         self, mocker, mock_db_session, sample_result_df
     ):
         rows = self._make_db_rows(mocker, ["AAPL", "TEST"])
-        mock_db_session.execute.return_value.scalars.return_value.all.return_value = (
-            rows
-        )
+        mock_db_session.execute.return_value.scalars.return_value.all.return_value = rows
 
-        ok, fail = persist_results(
-            sample_result_df, ["AAPL", "TEST"], "2024-01-01", "v1"
-        )
+        ok, fail = persist_results(sample_result_df, ["AAPL", "TEST"], "2024-01-01", "v1")
         assert ok == 1
         assert fail == 1
 
-    def test_up_prediction_uses_proba_up(
-        self, mocker, mock_db_session, sample_result_df
-    ):
+    def test_up_prediction_uses_proba_up(self, mocker, mock_db_session, sample_result_df):
         rows = self._make_db_rows(mocker, ["AAPL", "MSFT"])
-        mock_db_session.execute.return_value.scalars.return_value.all.return_value = (
-            rows
-        )
+        mock_db_session.execute.return_value.scalars.return_value.all.return_value = rows
 
         persist_results(sample_result_df, ["AAPL", "MSFT"], "2024-01-01", "v1")
 
         assert mock_db_session.add_all.call_args[0][0][0].probability == 0.72
 
-    def test_down_prediction_uses_proba_down(
-        self, mocker, mock_db_session, sample_result_df
-    ):
+    def test_down_prediction_uses_proba_down(self, mocker, mock_db_session, sample_result_df):
         rows = self._make_db_rows(mocker, ["AAPL", "MSFT"])
-        mock_db_session.execute.return_value.scalars.return_value.all.return_value = (
-            rows
-        )
+        mock_db_session.execute.return_value.scalars.return_value.all.return_value = rows
 
         persist_results(sample_result_df, ["AAPL", "MSFT"], "2024-01-01", "v1")
 
@@ -295,9 +275,7 @@ class TestPersistResults:
 
     def test_commit_is_called(self, mocker, mock_db_session, sample_result_df):
         rows = self._make_db_rows(mocker, ["AAPL", "MSFT"])
-        mock_db_session.execute.return_value.scalars.return_value.all.return_value = (
-            rows
-        )
+        mock_db_session.execute.return_value.scalars.return_value.all.return_value = rows
 
         persist_results(sample_result_df, ["AAPL", "MSFT"], "2024-01-01", "v1")
 
@@ -309,18 +287,10 @@ class TestPersistResults:
 
 class TestMain:
     def test_calls_all_steps_in_order(self, mocker):
-        mock_load = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.load_champion_model"
-        )
-        mock_fetch = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.fetch_features"
-        )
-        mock_predict = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.run_predictions"
-        )
-        mock_persist = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.persist_results"
-        )
+        mock_load = mocker.patch("stock_prediction_ml.model.batch_predict.load_champion_model")
+        mock_fetch = mocker.patch("stock_prediction_ml.model.batch_predict.fetch_features")
+        mock_predict = mocker.patch("stock_prediction_ml.model.batch_predict.run_predictions")
+        mock_persist = mocker.patch("stock_prediction_ml.model.batch_predict.persist_results")
 
         mock_load.return_value = (mocker.MagicMock(), "1")
         mock_persist.return_value = (2, 0)
@@ -332,38 +302,32 @@ class TestMain:
         mock_predict.assert_called_once()
         mock_persist.assert_called_once()
 
-    def test_returns_early_on_model_load_failure(self, mocker):
+    def test_raises_on_model_load_failure(self, mocker):
         mock_load = mocker.patch(
             "stock_prediction_ml.model.batch_predict.load_champion_model",
             side_effect=Exception("Failed model load"),
         )
-        mock_fetch = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.fetch_features"
-        )
+        mock_fetch = mocker.patch("stock_prediction_ml.model.batch_predict.fetch_features")
 
-        main(["AAPL", "MSFT"], "2024-01-01")
+        with pytest.raises(Exception, match="Failed model load"):
+            main(["AAPL", "MSFT"], "2024-01-01")
 
         mock_load.assert_called_once()
         mock_fetch.assert_not_called()
 
-    def test_returns_early_on_feature_fetch_failure(self, mocker):
-        mock_load = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.load_champion_model"
-        )
+    def test_raises_on_feature_fetch_failure(self, mocker):
+        mock_load = mocker.patch("stock_prediction_ml.model.batch_predict.load_champion_model")
         mock_fetch = mocker.patch(
             "stock_prediction_ml.model.batch_predict.fetch_features",
             side_effect=Exception("Failed fetching"),
         )
-        mock_predict = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.run_predictions"
-        )
-        mock_persist = mocker.patch(
-            "stock_prediction_ml.model.batch_predict.persist_results"
-        )
+        mock_predict = mocker.patch("stock_prediction_ml.model.batch_predict.run_predictions")
+        mock_persist = mocker.patch("stock_prediction_ml.model.batch_predict.persist_results")
 
         mock_load.return_value = (mocker.MagicMock(), "1")
 
-        main(["AAPL", "MSFT"], "2024-01-01")
+        with pytest.raises(Exception, match="Failed fetching"):
+            main(["AAPL", "MSFT"], "2024-01-01")
 
         mock_load.assert_called_once()
         mock_fetch.assert_called_once()

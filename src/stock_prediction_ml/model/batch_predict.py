@@ -234,13 +234,13 @@ def main(tickers: list[str], date: str) -> None:
         model, model_version = load_champion_model()
     except Exception as e:
         logger.error(f"Failed to load champion model: {e}")
-        return
+        raise
 
     try:
         features_df = fetch_features(tickers)
     except Exception as e:
         logger.error(f"Failed to fetch features: {e}")
-        return
+        raise
 
     result_df = run_predictions(model, features_df)
     ok, fail = persist_results(result_df, tickers, date, model_version)
