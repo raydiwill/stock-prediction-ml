@@ -18,19 +18,11 @@ Key Components:
 
 Usage:
     CLI:
-<<<<<<< HEAD
         $ python -m stock_prediction_ml.model.train --config configs/training/local.yaml
 
     Python:
         >>> from stock_prediction_ml.model.train import main
         >>> main("configs/training/local.yaml")
-=======
-        $ python -m stock_prediction_ml.model.train --config configs/training/dev.yaml
-
-    Python:
-        >>> from stock_prediction_ml.model.train import main
-        >>> main("configs/training/dev.yaml")
->>>>>>> chore/add-staging-env
 
 Example Output:
     - MLflow experiment with logged metrics, params, and artifacts
@@ -842,11 +834,7 @@ def main(
         None
 
     Example:
-<<<<<<< HEAD
         >>> main("configs/training/local.yaml")
-=======
-        >>> main("configs/training/dev.yaml")
->>>>>>> chore/add-staging-env
     """
     log_section("Stock Prediction Model Training")
 
@@ -884,11 +872,7 @@ def main(
         logger.info(f"MLflow tracking URI: {tracking_uri}")
         logger.info(f"MLflow experiment: {experiment_name}")
 
-<<<<<<< HEAD
         mlflow.log_artifact(config_path or "configs/training/local.yaml", artifact_path="config")
-=======
-        mlflow.log_artifact(config_path or "configs/training/dev.yaml", artifact_path="config")
->>>>>>> chore/add-staging-env
         mlflow.log_params(config.get("model_params", {}))
         mlflow.log_param("selected_feature_count", len(selected_features))
         mlflow.log_param("training_start_date", start_date or "all")
@@ -990,11 +974,7 @@ def main(
     # Log promote hint
     logger.info(
         f"To promote: python -m stock_prediction_ml.model.promote "
-<<<<<<< HEAD
         f"--version {model_version} --config configs/training/local.yaml"
-=======
-        f"--version {model_version} --config configs/training/dev.yaml"
->>>>>>> chore/add-staging-env
     )
 
     # Clean up resources

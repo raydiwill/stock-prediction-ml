@@ -21,11 +21,7 @@ output_model_path: models/catboost_model.cbm
 mlflow:
   experiment_name: Stock_Prediction_Experiment_Prod
   run_name: Stock_Prediction_Run_Prod
-<<<<<<< HEAD
   registered_model_name: stock_prediction_classifier
-=======
-  registered_model_name: stock_prediction_classifier_prod
->>>>>>> chore/add-staging-env
 
 promotion:
   champion:

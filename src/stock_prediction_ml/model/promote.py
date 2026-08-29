@@ -10,17 +10,10 @@ Separates promotion concern from training, enabling:
 
 Usage:
     # Auto-promote latest version from last training run
-<<<<<<< HEAD
     $ python -m stock_prediction_ml.model.promote --config configs/training/local.yaml
 
     # Promote specific version
     $ python -m stock_prediction_ml.model.promote --version 3 --config configs/training/local.yaml
-=======
-    $ python -m stock_prediction_ml.model.promote --config configs/training/dev.yaml
-
-    # Promote specific version
-    $ python -m stock_prediction_ml.model.promote --version 3 --config configs/training/dev.yaml
->>>>>>> chore/add-staging-env
 
     # Force-promote (first run / manual override)
     $ python -m stock_prediction_ml.model.promote --version 1 --force --alias champion
@@ -50,11 +43,7 @@ def load_promotion_config(config_path: str | Path | None) -> dict:
 
     Args:
         config_path: Path to YAML config file. If None, falls back to
-<<<<<<< HEAD
             the default local config. If the file lacks a 'promotion'
-=======
-            the default dev config. If the file lacks a 'promotion'
->>>>>>> chore/add-staging-env
             key, returns DEFAULT_THRESHOLDS.
 
     Returns:
@@ -64,11 +53,7 @@ def load_promotion_config(config_path: str | Path | None) -> dict:
     config_path = (
         Path(config_path)
         if config_path
-<<<<<<< HEAD
         else PROJECT_ROOT / "configs" / "training" / "local.yaml"
-=======
-        else PROJECT_ROOT / "configs" / "training" / "dev.yaml"
->>>>>>> chore/add-staging-env
     )
 
     logger.info("Loading config from: %s", config_path)

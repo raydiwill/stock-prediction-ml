@@ -32,11 +32,7 @@ _TODAY = "{{ ds }}"
     tags=["training", "mlflow"],
     params={
         "config_path": Param(
-<<<<<<< HEAD
             default=f"configs/training/{Variable.get('environment', default_var='local')}.yaml",
-=======
-            default=f"configs/training/{Variable.get('environment', default_var='dev')}.yaml",
->>>>>>> chore/add-staging-env
             type="string",
         ),
         "start_date": Param(
