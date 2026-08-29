@@ -18,6 +18,10 @@ wheels/
 # Environment variables file (actual values are gitignored, examples are tracked)
 config.env.dev
 config.env.prod
+<<<<<<< HEAD
+=======
+config.env.staging
+>>>>>>> chore/add-staging-env
 config.env.local*
 
 # Data folder

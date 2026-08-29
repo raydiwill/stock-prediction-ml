@@ -107,7 +107,11 @@ src/stock_prediction_ml/
 └── ui/            # Streamlit dashboard (pages, components, utils)
 
 tests/             # Pytest test modules (9 modules, 80+ tests)
+<<<<<<< HEAD
 configs/           # YAML configs (training/local.yaml)
+=======
+configs/           # YAML configs (training/dev.yaml)
+>>>>>>> chore/add-staging-env
 notebooks/         # Jupyter exploration (01-06)
 
 orchestration/
@@ -141,6 +145,10 @@ orchestration/
 | Streamlit UI | [src/stock_prediction_ml/ui/app.py](src/stock_prediction_ml/ui/app.py) |
 | DB models | [src/stock_prediction_ml/db/models.py](src/stock_prediction_ml/db/models.py) |
 | Test patterns | [tests/test_train.py](tests/test_train.py), [tests/test_api.py](tests/test_api.py), [tests/test_ui.py](tests/test_ui.py) |
+<<<<<<< HEAD
 | Training config | [configs/training/local.yaml](configs/training/local.yaml) |
+=======
+| Training config | [configs/training/dev.yaml](configs/training/dev.yaml) |
+>>>>>>> chore/add-staging-env
 | Airflow DAGs | [orchestration/dags/](orchestration/dags/) |
 | Airflow tests | [orchestration/tests/](orchestration/tests/) |

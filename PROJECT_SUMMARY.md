@@ -77,7 +77,11 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
      - Selected features loaded from `data/meta/selected_features.json`
    - **Training**:
      - CatBoost classifier with early stopping (50 rounds on validation set)
+<<<<<<< HEAD
      - Configurable hyperparameters via YAML ([`configs/training/local.yaml`](configs/training/local.yaml))
+=======
+     - Configurable hyperparameters via YAML ([`configs/training/dev.yaml`](configs/training/dev.yaml))
+>>>>>>> chore/add-staging-env
      - Deterministic with `random_seed: 42`, `allow_writing_files: false` in tests
    - **Evaluation**:
      - Metrics: accuracy and ROC-AUC for both validation and test sets
@@ -263,7 +267,11 @@ Build an end-to-end ML pipeline to predict next-day stock price direction (up/do
 - [`src/stock_prediction_ml/ui/`](src/stock_prediction_ml/ui/): Streamlit dashboard (app.py, pages, components, utils)
 
 ### Configuration
+<<<<<<< HEAD
 - [`configs/training/local.yaml`](configs/training/local.yaml): Training configuration (paths, hyperparameters, Feast service, MLflow settings)
+=======
+- [`configs/training/dev.yaml`](configs/training/dev.yaml): Training configuration (paths, hyperparameters, Feast service, MLflow settings)
+>>>>>>> chore/add-staging-env
 - [`src/stock_prediction_ml/feast_repo/feature_store.yaml`](src/stock_prediction_ml/feast_repo/feature_store.yaml): Feast feature store configuration (offline/online stores, registry)
 - [`src/stock_prediction_ml/config/settings.py`](src/stock_prediction_ml/config/settings.py): Centralized settings (model, API, Feast, CORS, valid symbols)
 - [`config.env`](config.env): Environment variables (API keys, DB URL, MLflow URI)

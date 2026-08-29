@@ -137,7 +137,11 @@ A **portfolio project** demonstrating production ML practices for financial time
 
 ### 3. Separating Dev vs Prod Environments
 - Learned this pattern at my previous job, now applied it here
+<<<<<<< HEAD
 - Separate configs (`local.yaml` vs `prod.yaml`) prevent accidental production issues
+=======
+- Separate configs (`dev.yaml` vs `staging.yaml` vs `prod.yaml`) prevent accidental production issues
+>>>>>>> chore/add-staging-env
 - Makes deployment smoother when environments are explicitly defined
 
 ### 4. Organizing Data by Purpose
@@ -234,13 +238,33 @@ make airflow-password
 make airflow-down
 ```
 
+<<<<<<< HEAD
+=======
+**Staging Deployment:**
+```bash
+# Copy and configure staging environment
+cp configs/config.env.example configs/config.env.staging
+# Edit configs/config.env.staging with real credentials
+
+# Pulls published images from GHCR rather than building locally
+make up-staging
+
+# One-time: train model and materialize features
+make init-staging
+```
+
+>>>>>>> chore/add-staging-env
 **Production Deployment:**
 ```bash
 # Copy and configure prod environment
 cp configs/config.env.example configs/config.env.prod
 # Edit configs/config.env.prod with real credentials (see prod-specific notes in the file's comments)
 
+<<<<<<< HEAD
 # Start production stack (no bind-mounts, no dev ports)
+=======
+# Pulls published images from GHCR rather than building locally
+>>>>>>> chore/add-staging-env
 make up-prod
 
 # One-time: train model and materialize features
@@ -258,6 +282,17 @@ make init-prod
 | MinIO Console | http://localhost:9001 |
 | MinIO API | http://localhost:9000 |
 
+<<<<<<< HEAD
+=======
+**Services (Staging):**
+| Service | Port |
+|---------|------|
+| FastAPI | 8100 |
+| Streamlit UI | 8601 |
+| Airflow | 8180 |
+| Grafana | 9200 |
+
+>>>>>>> chore/add-staging-env
 **Services (Prod):**
 | Service | Port |
 |---------|------|
@@ -270,6 +305,43 @@ make init-prod
 
 ---
 
+<<<<<<< HEAD
+=======
+## Release Flow
+
+Three environment tiers map onto three git events, each producing a versioned container
+image published to GHCR ([ci.yml](.github/workflows/ci.yml)):
+
+| Git event | Environment | Image tags | MLflow model |
+|---|---|---|---|
+| push to `dev` branch | Dev | `dev-<short-sha>` | `stock_prediction_classifier` |
+| push/merge to `main` | Staging | `staging`, `staging-<short-sha>` | `stock_prediction_classifier_staging` |
+| tag `vX.Y.Z` on `main` | Prod | `prod`, `X.Y.Z`, `X.Y` | `stock_prediction_classifier_prod` |
+
+**Promotion path:**
+```bash
+# 1. Feature work merges into the long-lived `dev` branch (no PR required) -> dev image
+git checkout dev && git merge feat/my-change && git push
+
+# 2. Open a PR from `dev` into `main`; merging publishes the staging image
+#    (this is the gate — tests must pass, review happens here)
+
+# 3. Cut a production release once staging is verified, from a clean `main` checkout
+git checkout main && git pull
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Pushing a `vX.Y.Z` tag triggers the `publish` job to build and push `prod`, `1.2.3`, and
+`1.2` images. Follow strict `MAJOR.MINOR.PATCH` — no `v` prefix on the version digits
+themselves, and no partial versions like `v1.2`.
+
+Each tier's model is registered under its own name (`settings.py` / `configs/training/*.yaml`),
+so a staging training run can never promote a `champion` alias that the prod API loads.
+
+---
+
+>>>>>>> chore/add-staging-env
 ## Object Storage (MinIO)
 
 All pipeline data — raw/processed/feature parquet files, the Feast offline store, and MLflow

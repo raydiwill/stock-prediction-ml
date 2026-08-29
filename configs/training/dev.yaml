@@ -19,18 +19,14 @@ model_params:
 output_model_path: models/catboost_model.cbm
 
 mlflow:
-  experiment_name: Stock_Prediction_Experiment_Prod
-  run_name: Stock_Prediction_Run_Prod
-<<<<<<< HEAD
+  experiment_name: Stock_Prediction_Experiment
+  run_name: Stock_Prediction_Run
   registered_model_name: stock_prediction_classifier
-=======
-  registered_model_name: stock_prediction_classifier_prod
->>>>>>> chore/add-staging-env
 
 promotion:
   champion:
-    accuracy: 0.65
-    auc: 0.70
+    accuracy: 0.50
+    auc: 0.50
   challenger:
-    accuracy: 0.60
-    auc: 0.65
+    accuracy: 0.45
+    auc: 0.45

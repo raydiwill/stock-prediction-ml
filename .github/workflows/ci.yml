@@ -5,8 +5,17 @@ on:
     branches: ["**"]
   pull_request:
 
+<<<<<<< HEAD
 jobs:
   lint-and-test:
+=======
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  lint:
+>>>>>>> chore/add-staging-env
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,6 +48,38 @@ jobs:
           uv run ruff --version
           uv run ruff check .
 
+<<<<<<< HEAD
+=======
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Cache uv environment
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml','uv.lock') }}
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Install package
+        run: uv pip install -e .
+
+>>>>>>> chore/add-staging-env
       - name: Run tests
         env:
           MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
@@ -56,6 +97,86 @@ jobs:
             uv run pytest -v -m "not slow"
           fi
 
+<<<<<<< HEAD
+=======
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        target: [api, ui, worker, airflow]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          load: true
+          tags: stock-prediction-ml/${{ matrix.target }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  publish:
+    needs: [build]
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        target: [api, ui, worker, airflow]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine image tag
+        id: meta
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.target }}"
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          if [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            TAGS="$IMAGE:dev-$SHORT_SHA"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            TAGS="$IMAGE:staging,$IMAGE:staging-$SHORT_SHA"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            MINOR="${VERSION%.*}"
+            TAGS="$IMAGE:prod,$IMAGE:$VERSION,$IMAGE:$MINOR"
+          fi
+
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Push Docker images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+>>>>>>> chore/add-staging-env
   airflow-tests:
     runs-on: ubuntu-latest
     steps:
