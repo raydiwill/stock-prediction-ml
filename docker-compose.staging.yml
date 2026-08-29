@@ -174,9 +174,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    build:
-      context: .
-      target: api
+    image: ghcr.io/raydiwill/stock-prediction-ml/api:${IMAGE_TAG:-staging}
 
     container_name: stock-prediction-fastapi-staging
 
@@ -201,9 +199,7 @@ services:
       api:
         condition: service_healthy
 
-    build:
-      context: .
-      target: ui
+    image: ghcr.io/raydiwill/stock-prediction-ml/ui:${IMAGE_TAG:-staging}
 
     container_name: stock-prediction-uis-staging
 
@@ -222,9 +218,7 @@ services:
 
   airflow-init:
     <<: *common-env
-    build:
-      context: .
-      target: airflow
+    image: ghcr.io/raydiwill/stock-prediction-ml/airflow:${IMAGE_TAG:-staging}
     container_name: stock-prediction-airflow-init-staging
     profiles: ["airflow"]
     restart: "no"
@@ -259,9 +253,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-    build:
-      context: .
-      target: airflow
+    image: ghcr.io/raydiwill/stock-prediction-ml/airflow:${IMAGE_TAG:-staging}
 
     container_name: stock-prediction-airflow-staging
 
