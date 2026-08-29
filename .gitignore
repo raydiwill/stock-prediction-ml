@@ -18,6 +18,7 @@ wheels/
 # Environment variables file (actual values are gitignored, examples are tracked)
 config.env.dev
 config.env.prod
+config.env.staging
 config.env.local*
 
 # Data folder
