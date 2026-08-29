@@ -82,11 +82,11 @@ init:
 	$(COMPOSE_DEV) exec api sh -c "cd src/stock_prediction_ml/feast_repo && feast apply"
 	@echo "==> Training model"
 	$(COMPOSE_DEV) exec api python -m stock_prediction_ml.model.train \
-		--config configs/training/local.yaml \
+		--config configs/training/dev.yaml \
 		--start-date $(TRAIN_START_DATE)
 	@echo "==> Promoting latest model to champion"
 	$(COMPOSE_DEV) exec api python -m stock_prediction_ml.model.promote \
-		--config configs/training/local.yaml \
+		--config configs/training/dev.yaml \
 		--force --alias champion
 	@echo "==> feast materialize (full range from training start)"
 	$(COMPOSE_DEV) exec api sh -c "feast -c src/stock_prediction_ml/feast_repo materialize $(TRAIN_START_DATE)T00:00:00 $$(date +%Y-%m-%dT%H:%M:%S)"
