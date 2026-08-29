@@ -1,13 +1,13 @@
-name: stock-prediction-prod
+name: stock-prediction-staging
 
 x-common-env: &common-env
   env_file:
-    - configs/config.env.prod
+    - configs/config.env.staging
 
 services:
   db:
     image: postgres:16-alpine
-    container_name: stock-prediction-db-prod
+    container_name: stock-prediction-db-staging
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -38,7 +38,7 @@ services:
       minio-init:
         condition: service_completed_successfully
     image: ghcr.io/mlflow/mlflow:v3.6.0
-    container_name: stock-prediction-mlflow-prod
+    container_name: stock-prediction-mlflow-staging
 
     # Internal-only, same as db/redis — nothing outside the compose network
     # needs to browse the MLflow UI directly.
@@ -56,7 +56,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
 
-    command: sh -c "pip install psycopg2-binary boto3 && mlflow server --backend-store-uri postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination s3://stock-prediction/prod/mlflow/ --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
+    command: sh -c "pip install psycopg2-binary boto3 && mlflow server --backend-store-uri postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/mlflow --artifacts-destination s3://stock-prediction/staging/mlflow/ --serve-artifacts --host 0.0.0.0 --allowed-hosts '*'"
 
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
@@ -69,7 +69,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: stock-prediction-redis-prod
+    container_name: stock-prediction-redis-staging
 
     # No host port publish — internal only.
     networks:
@@ -88,7 +88,7 @@ services:
 
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
-    container_name: stock-prediction-minio-prod
+    container_name: stock-prediction-minio-staging
 
     # No host port publish — internal only.
     networks:
@@ -113,7 +113,7 @@ services:
 
   minio-init:
     image: minio/mc:latest
-    container_name: stock-prediction-minio-init-prod
+    container_name: stock-prediction-minio-init-staging
     depends_on:
       minio:
         condition: service_healthy
@@ -138,7 +138,7 @@ services:
         condition: service_healthy
 
     image: grafana/grafana:13.0-slim
-    container_name: stock-prediction-grafana-prod
+    container_name: stock-prediction-grafana-staging
 
     networks:
       - isolated
@@ -149,7 +149,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
 
     ports:
-      - "9300:3000"
+      - "9200:3000"
 
     volumes:
       - grafana-data:/var/lib/grafana
@@ -174,12 +174,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    image: ghcr.io/raydiwill/stock-prediction-ml/api:${IMAGE_TAG:-prod}
+    image: ghcr.io/raydiwill/stock-prediction-ml/api:${IMAGE_TAG:-staging}
 
-    container_name: stock-prediction-fastapi-prod
+    container_name: stock-prediction-fastapi-staging
 
-    # No bind mounts — prod runs off what's baked into the image at build time.
-    # Data storage is entirely backed by MinIO (s3:// URIs in settings).
+    # No bind mounts — staging runs off what's baked into the image at
+    # build time, same as prod. Data storage is entirely backed by MinIO
+    # (s3:// URIs in settings).
 
     networks:
       - isolated
@@ -187,9 +188,9 @@ services:
 
     environment:
       PYTHONPATH: /usr/local/app/src
-      ENV_FILE: configs/config.env.prod
+      ENV_FILE: configs/config.env.staging
     ports:
-      - "9000:8000"
+      - "8100:8000"
     restart: unless-stopped
 
   ui:
@@ -198,9 +199,9 @@ services:
       api:
         condition: service_healthy
 
-    image: ghcr.io/raydiwill/stock-prediction-ml/ui:${IMAGE_TAG:-prod}
+    image: ghcr.io/raydiwill/stock-prediction-ml/ui:${IMAGE_TAG:-staging}
 
-    container_name: stock-prediction-uis-prod
+    container_name: stock-prediction-uis-staging
 
     networks:
       - isolated
@@ -209,16 +210,16 @@ services:
     environment:
       PYTHONPATH: /usr/local/app/src
       API_HOST: api
-      ENV_FILE: configs/config.env.prod
+      ENV_FILE: configs/config.env.staging
     ports:
-      - "9501:8501"
+      - "8601:8501"
     restart: unless-stopped
     command: streamlit run src/stock_prediction_ml/ui/app.py --server.port=8501 --server.address=0.0.0.0
 
   airflow-init:
     <<: *common-env
-    image: ghcr.io/raydiwill/stock-prediction-ml/airflow:${IMAGE_TAG:-prod}
-    container_name: stock-prediction-airflow-init-prod
+    image: ghcr.io/raydiwill/stock-prediction-ml/airflow:${IMAGE_TAG:-staging}
+    container_name: stock-prediction-airflow-init-staging
     profiles: ["airflow"]
     restart: "no"
     depends_on:
@@ -236,7 +237,7 @@ services:
       # Use the FAB RBAC auth manager instead so the admin user/password
       # below are the ones that actually work.
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
-      ENV_FILE: configs/config.env.prod
+      ENV_FILE: configs/config.env.staging
     command: |
       bash -c "
       airflow db migrate &&
@@ -252,9 +253,9 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-    image: ghcr.io/raydiwill/stock-prediction-ml/airflow:${IMAGE_TAG:-prod}
+    image: ghcr.io/raydiwill/stock-prediction-ml/airflow:${IMAGE_TAG:-staging}
 
-    container_name: stock-prediction-airflow-prod
+    container_name: stock-prediction-airflow-staging
 
     profiles: ["airflow"]
     networks:
@@ -263,15 +264,12 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # ALL_PASSWORDLESS dropped — that's a dev-only shortcut. Real users
-      # are provisioned by airflow-init instead. LocalExecutor is fine to
-      # keep for a single-box setup.
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
-      ENV_FILE: configs/config.env.prod
+      ENV_FILE: configs/config.env.staging
 
     volumes:
       # No ./orchestration/dags or ./src bind mounts — DAGs and app code
@@ -280,7 +278,7 @@ services:
       - airflow-logs:/opt/airflow/logs
 
     ports:
-      - "9080:8080"
+      - "8180:8080"
 
     # db migrate / users create already handled by airflow-init (one-time
     # setup this service depends_on: service_completed_successfully).
@@ -301,7 +299,6 @@ volumes:
   minio-data:
   airflow-logs:
   grafana-data:
-  data:
 
 networks:
   isolated:

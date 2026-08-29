@@ -1,5 +1,6 @@
 import os
 
+from pydantic import model_validator
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -16,16 +17,18 @@ class Settings(BaseSettings):
     api_port: int
 
     # Optional
+    environment: str = "dev"
+
     # API
     api_log_level: str = "info"
     api_reload: bool = False
 
     # Serving model
     model_name: str = "catboost_model"
-    default_experiment_name: str = "stock_prediction_experiment"
+    default_experiment_name: str | None = None
 
     # Model Registry settings
-    registered_model_name: str = "stock_prediction_classifier"
+    registered_model_name: str | None = None
     model_alias: str = "champion"
 
     # Feast settings
@@ -50,6 +53,21 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",  # don't crash if env has unrelated vars
     )
+
+    @model_validator(mode="after")
+    def _apply_environment_defaults(self) -> "Settings":
+        """Scope MLflow model/experiment names per environment unless overridden.
+
+        `dev` keeps the unsuffixed names for backward compatibility; staging/prod
+        get a suffix so a staging training run can never promote a model version
+        under the same registered name the prod API loads.
+        """
+        suffix = "" if self.environment == "dev" else f"_{self.environment}"
+        if self.registered_model_name is None:
+            self.registered_model_name = f"stock_prediction_classifier{suffix}"
+        if self.default_experiment_name is None:
+            self.default_experiment_name = f"stock_prediction_experiment{suffix}"
+        return self
 
 
 settings = Settings()
