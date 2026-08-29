@@ -137,7 +137,7 @@ A **portfolio project** demonstrating production ML practices for financial time
 
 ### 3. Separating Dev vs Prod Environments
 - Learned this pattern at my previous job, now applied it here
-- Separate configs (`local.yaml` vs `prod.yaml`) prevent accidental production issues
+- Separate configs (`dev.yaml` vs `staging.yaml` vs `prod.yaml`) prevent accidental production issues
 - Makes deployment smoother when environments are explicitly defined
 
 ### 4. Organizing Data by Purpose
