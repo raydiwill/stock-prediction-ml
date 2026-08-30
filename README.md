@@ -314,15 +314,67 @@ git checkout -b feat/my-change
 git push -u origin feat/my-change
 gh pr create --base main --head feat/my-change
 
-# 3. Cut a production release once staging is verified, from a clean `main` checkout
+# 3. Cut a production release once staging is verified — see "Cutting a release" below
+```
+
+### Cutting a release
+
+Use the **Release** workflow ([release.yml](.github/workflows/release.yml)) from the Actions
+tab — this is the primary path, requires no CLI, and works from any device with GitHub UI
+access:
+
+1. Go to **Actions → Release → Run workflow**.
+2. `ref`: which commit to release — see "Choosing `ref`" below.
+3. `version`: the version to tag — see "Choosing `X.Y.Z`" below.
+4. Run it. The workflow tags `ref` as `vX.Y.Z` and pushes the tag, which triggers the existing
+   `publish` job to build and push `prod`, `X.Y.Z`, and `X.Y` images — same as a manual tag
+   push, just without needing a local checkout.
+
+**Choosing `ref`:**
+
+| Situation | `ref` value |
+|---|---|
+| Common case: `main` is release-ready as-is | `main` |
+| Collision: someone else's not-yet-ready merge landed on `main` ahead of your release | a short-lived `release/*` branch cut from your last good commit (see below) |
+
+Collision case:
+```bash
+git checkout -b release/1.2.3 <last-good-sha>
+git push -u origin release/1.2.3
+# then run the Release workflow with ref: release/1.2.3
+```
+This is a manual escape hatch, not a standing process — delete the branch once the tag is
+pushed:
+```bash
+git push origin --delete release/1.2.3 && git branch -D release/1.2.3
+```
+
+**Choosing `X.Y.Z`:** follow strict `MAJOR.MINOR.PATCH` semantic versioning — no `v` prefix
+on the digits themselves (the workflow adds it), and no partial versions like `1.2`. Base the
+next version on the latest existing `vX.Y.Z` tag:
+
+| Bump | When | Example |
+|---|---|---|
+| **X** (major) | Breaking change — incompatible API/schema change, removed endpoint, model input contract change | `1.4.2` → `2.0.0` |
+| **Y** (minor) | Backward-compatible feature — new endpoint, new model version with the same interface, new config option | `1.4.2` → `1.5.0` |
+| **Z** (patch) | Backward-compatible fix — bug fix, dependency bump, doc/infra change with no behavior change | `1.4.2` → `1.4.3` |
+
+When unsure between two levels, prefer the smaller bump — it's easier to jump to a major
+version later than to walk one back. Check existing tags before picking a number:
+```bash
+git tag --list 'v*' --sort=-v:refname | head -5
+```
+
+A duplicate `version` (an already-existing `vX.Y.Z` tag) is rejected by the workflow's guard,
+so a typo can't silently overwrite a prior release.
+
+The manual `git tag` + `git push` CLI path still works unchanged as a fallback if you prefer
+it or are scripting a release:
+```bash
 git checkout main && git pull
 git tag v1.2.3
 git push origin v1.2.3
 ```
-
-Pushing a `vX.Y.Z` tag triggers the `publish` job to build and push `prod`, `1.2.3`, and
-`1.2` images. Follow strict `MAJOR.MINOR.PATCH` — no `v` prefix on the version digits
-themselves, and no partial versions like `v1.2`.
 
 Each tier's model is registered under its own name (`settings.py` / `configs/training/*.yaml`),
 so a staging training run can never promote a `champion` alias that the prod API loads.
