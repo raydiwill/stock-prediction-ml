@@ -23,6 +23,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Guard against duplicate tag
         run: |
