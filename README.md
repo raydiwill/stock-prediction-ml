@@ -304,11 +304,15 @@ image published to GHCR ([ci.yml](.github/workflows/ci.yml)):
 
 **Promotion path:**
 ```bash
-# 1. Feature work merges into the long-lived `dev` branch (no PR required) -> dev image
+# 1. Push feature branches to `dev` freely to build/test in the Dev tier image;
+#    `dev` is a pure integration sandbox and is never itself the PR source into `main`
 git checkout dev && git merge feat/my-change && git push
 
-# 2. Open a PR from `dev` into `main`; merging publishes the staging image
-#    (this is the gate — tests must pass, review happens here)
+# 2. Open a PR from your feature branch directly into `main`; merging publishes
+#    the staging image (this is the gate — tests must pass, review happens here)
+git checkout -b feat/my-change
+git push -u origin feat/my-change
+gh pr create --base main --head feat/my-change
 
 # 3. Cut a production release once staging is verified, from a clean `main` checkout
 git checkout main && git pull
