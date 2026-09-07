@@ -16,7 +16,6 @@ Flow:
 """
 
 import argparse
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,6 +23,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 from feast import FeatureStore
+from loguru import logger
 from mlflow.pyfunc import PyFuncModel
 from mlflow.tracking import MlflowClient
 from sqlalchemy import select
@@ -31,13 +31,6 @@ from sqlalchemy import select
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.db.models import PredictionResult, RawStockData
 from stock_prediction_ml.db.session import SessionLocal
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FEAST_REPO_PATH = PROJECT_ROOT / "src" / "stock_prediction_ml" / "feast_repo"
@@ -64,10 +57,6 @@ def load_champion_model() -> tuple[PyFuncModel, str]:
 
     model_uri = f"models:/{settings.registered_model_name}@{settings.model_alias}"
     model = mlflow.pyfunc.load_model(model_uri=model_uri)
-
-    # MLflow/Alembic changes root logger level from INFO → WARNING;
-    # reset it so propagated messages from this logger are not silenced.
-    logging.getLogger().setLevel(logging.INFO)
 
     return model, model_version
 
@@ -253,6 +242,9 @@ def main(tickers: list[str], date: str) -> None:
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
+
     parser = argparse.ArgumentParser(
         description="Run batch predictions for configured tickers.",
     )
