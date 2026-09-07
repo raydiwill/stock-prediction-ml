@@ -1,13 +1,10 @@
 import argparse
-import logging
 
 import great_expectations as gx
 import pandas as pd
+from loguru import logger
 
 from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 
 def get_context():
@@ -189,7 +186,7 @@ def main():
     # Count successes
     successful_count = sum(1 for r in validation_result["results"] if r["success"])
     total_count = len(validation_result["results"])
-    logger.info("Successful expectations: %d / %d", successful_count, total_count)
+    logger.info(f"Successful expectations: {successful_count} / {total_count}")
 
     # Print failed expectations
     if successful_count < total_count:
@@ -212,4 +209,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
     main()
