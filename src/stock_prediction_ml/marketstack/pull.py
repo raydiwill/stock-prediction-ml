@@ -1,10 +1,10 @@
 import argparse
-import logging
 import time
 from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
+from loguru import logger
 
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.config.storage import (
@@ -15,11 +15,6 @@ from stock_prediction_ml.config.storage import (
 )
 
 API_URL = "https://api.marketstack.com/v2"
-
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 
 def fetch_ticker_data(
@@ -322,4 +317,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
     main()
