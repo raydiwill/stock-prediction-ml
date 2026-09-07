@@ -1,13 +1,10 @@
 """HTTP client wrapper for FastAPI backend communication."""
 
-import logging
-
 import httpx
 import streamlit as st
+from loguru import logger
 
 from stock_prediction_ml.config.settings import settings
-
-logger = logging.getLogger(__name__)
 
 API_BASE_URL = f"http://{settings.api_host}:{settings.api_port}"
 

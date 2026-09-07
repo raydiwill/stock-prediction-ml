@@ -36,7 +36,6 @@ Notes:
 """
 
 import base64
-import logging
 import shutil
 import tempfile
 import time
@@ -62,17 +61,11 @@ from stock_prediction_ml.api.schema import (
     StockRequest,
 )
 from stock_prediction_ml.api.utils import check_dependencies, next_trading_day
+from stock_prediction_ml.config.logging import logger, setup_logging
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.db.models import PredictionResult, RawStockData
 from stock_prediction_ml.db.session import get_db
 from stock_prediction_ml.db.setup_db import create_all_tables
-
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-)
-logger = logging.getLogger(__name__)
 
 # --- Set MLflow Tracking URI at module import time ---
 # This prevents mlruns/ folder creation in API module directory
@@ -94,10 +87,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage API startup and shutdown lifecycle.
 
     Initializes all dependencies on startup:
-        1. MLflow tracking connection
-        2. Champion model from Model Registry
-        3. Feast online feature store
-        4. Model version metadata
+        1. Logging configuration
+        2. MLflow tracking connection
+        3. Champion model from Model Registry
+        4. Feast online feature store
+        5. Model version metadata
 
     On shutdown, logs a clean exit message.
 
@@ -111,6 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         Logs errors but does not raise - allows partial startup for debugging.
     """
     global MODEL, FEAST_STORE, MODEL_VERSION, MLFLOW_CLIENT
+
+    setup_logging()
 
     logger.info("=" * 60)
     logger.info("Starting Stock Prediction API...")
