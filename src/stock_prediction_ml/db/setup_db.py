@@ -1,5 +1,6 @@
 from loguru import logger
 
+from stock_prediction_ml.config.logging import setup_logging
 from stock_prediction_ml.db.models import Base
 from stock_prediction_ml.db.session import engine
 
@@ -9,7 +10,6 @@ def create_all_tables():
 
 
 if __name__ == "__main__":
-    from stock_prediction_ml.config.logging import setup_logging
     setup_logging()
 
     create_all_tables()
