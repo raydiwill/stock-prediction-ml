@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Optional
     environment: str = "dev"
 
+    # Logging
+    log_level: str = "INFO"
+    log_json: bool = False
+
     # API
     api_log_level: str = "info"
     api_reload: bool = False

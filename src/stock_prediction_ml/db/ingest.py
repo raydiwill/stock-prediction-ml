@@ -1,10 +1,10 @@
 import argparse
 import hashlib
 import json
-import logging
 from datetime import datetime
 
 import pandas as pd
+from loguru import logger
 from sqlalchemy.exc import IntegrityError
 
 from stock_prediction_ml.config.storage import data_path, storage_options
@@ -12,13 +12,6 @@ from stock_prediction_ml.db import models
 from stock_prediction_ml.db.session import get_db
 
 TARGET_TABLE = models.RawStockData
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
 
 
 def read_validated_file(path: str | None = None) -> pd.DataFrame:
@@ -501,6 +494,9 @@ def main(path: str | None = None, dry_run: bool = False) -> None:
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
+
     parser = argparse.ArgumentParser(description="Ingest validated stock data into the database.")
     parser.add_argument(
         "--path",

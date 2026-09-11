@@ -32,7 +32,6 @@ Example Output:
 
 import argparse
 import json
-import logging
 import shutil
 from pathlib import Path
 
@@ -44,25 +43,13 @@ import pandas as pd
 import yaml
 from catboost import CatBoostClassifier
 from feast import FeatureStore
+from loguru import logger
 from mlflow.models import infer_signature
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.config.storage import data_path, storage_options
-
-# Configure enhanced logging with timestamps and better formatting
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(
-    logging.Formatter(
-        "%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-)
-logger.addHandler(handler)
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -859,10 +846,6 @@ def main(
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
 
-    # MLflow/Alembic changes root logger level from INFO → WARNING;
-    # reset it so propagated messages are not silenced.
-    logging.getLogger().setLevel(logging.INFO)
-
     # Get model name from config for Model Registry
     model_name = mlflow_config.get("registered_model_name", "stock_prediction_classifier")
 
@@ -984,6 +967,9 @@ def main(
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
+
     parser = argparse.ArgumentParser(description="Train a CatBoost model for stock prediction.")
     parser.add_argument(
         "--config",

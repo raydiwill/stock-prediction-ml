@@ -1,16 +1,10 @@
 import argparse
-import logging
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 
 def read_validated_data(
@@ -406,4 +400,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
     main()

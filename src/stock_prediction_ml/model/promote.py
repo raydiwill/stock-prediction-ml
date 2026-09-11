@@ -20,16 +20,14 @@ Usage:
 """
 
 import argparse
-import logging
 from pathlib import Path
 
 import mlflow
 import yaml
+from loguru import logger
 from mlflow.tracking import MlflowClient
 
 from stock_prediction_ml.config.settings import settings
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLDS = {
     "champion": {"accuracy": 0.65, "auc": 0.70},
@@ -225,18 +223,6 @@ def promote(
 
 def main() -> None:
     """CLI entry point for model promotion."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    logger.setLevel(logging.INFO)
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        )
-        logger.addHandler(handler)
-
     parser = argparse.ArgumentParser(
         description="Promote a registered MLflow model version to champion/challenger."
     )
@@ -315,4 +301,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
     main()

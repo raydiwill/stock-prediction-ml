@@ -7,23 +7,16 @@ Usage:
 """
 
 import argparse
-import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+from loguru import logger
 from sqlalchemy import select
 
 from stock_prediction_ml.config.storage import data_path, ensure_parent_dir, storage_options
 from stock_prediction_ml.db.models import RawStockData
 from stock_prediction_ml.db.session import SessionLocal
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)-8s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
 
 # These are the columns build_features.py expects from its input parquet
 EXPORT_COLUMNS = [
@@ -144,4 +137,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    from stock_prediction_ml.config.logging import setup_logging
+    setup_logging()
     main()

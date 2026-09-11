@@ -36,7 +36,6 @@ Notes:
 """
 
 import base64
-import logging
 import shutil
 import tempfile
 import time
@@ -44,6 +43,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 import mlflow
 import pandas as pd
@@ -62,17 +62,11 @@ from stock_prediction_ml.api.schema import (
     StockRequest,
 )
 from stock_prediction_ml.api.utils import check_dependencies, next_trading_day
+from stock_prediction_ml.config.logging import logger, setup_logging
 from stock_prediction_ml.config.settings import settings
 from stock_prediction_ml.db.models import PredictionResult, RawStockData
 from stock_prediction_ml.db.session import get_db
 from stock_prediction_ml.db.setup_db import create_all_tables
-
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-)
-logger = logging.getLogger(__name__)
 
 # --- Set MLflow Tracking URI at module import time ---
 # This prevents mlruns/ folder creation in API module directory
@@ -94,10 +88,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage API startup and shutdown lifecycle.
 
     Initializes all dependencies on startup:
-        1. MLflow tracking connection
-        2. Champion model from Model Registry
-        3. Feast online feature store
-        4. Model version metadata
+        1. Logging configuration
+        2. MLflow tracking connection
+        3. Champion model from Model Registry
+        4. Feast online feature store
+        5. Model version metadata
 
     On shutdown, logs a clean exit message.
 
@@ -111,6 +106,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         Logs errors but does not raise - allows partial startup for debugging.
     """
     global MODEL, FEAST_STORE, MODEL_VERSION, MLFLOW_CLIENT
+
+    setup_logging()
 
     logger.info("=" * 60)
     logger.info("Starting Stock Prediction API...")
@@ -190,6 +187,10 @@ app.add_middleware(
 async def log_requests(request: Request, call_next: Callable) -> Response:
     """Log HTTP request method, path, status code, and latency.
 
+    Adds a unique request_id to the logger context so every log line emitted
+    while handling this request carries the id. With JSON serialization, this
+    becomes a queryable field for request tracing.
+
     Args:
         request: Incoming HTTP request.
         call_next: Next middleware/handler in chain.
@@ -197,17 +198,20 @@ async def log_requests(request: Request, call_next: Callable) -> Response:
     Returns:
         Response: HTTP response from downstream handler.
     """
-    start_time = time.time()
+    request_id = uuid4().hex[:8]
 
-    response = await call_next(request)
+    with logger.contextualize(request_id=request_id):
+        start_time = time.time()
 
-    duration = time.time() - start_time
-    logger.info(
-        f"{request.method} {request.url.path} "
-        f"status={response.status_code} duration={duration:.3f}s"
-    )
+        response = await call_next(request)
 
-    return response
+        duration = time.time() - start_time
+        logger.info(
+            f"{request.method} {request.url.path} "
+            f"status={response.status_code} duration={duration:.3f}s"
+        )
+
+        return response
 
 
 @app.get("/health", response_model=HealthResponse)
