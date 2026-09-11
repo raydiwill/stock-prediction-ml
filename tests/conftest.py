@@ -5,7 +5,6 @@ during test collection and execution.
 """
 
 import sys
-from io import StringIO
 from unittest.mock import MagicMock
 
 import pytest
@@ -28,11 +27,9 @@ class LogCaptureFixture:
     def __enter__(self) -> "LogCaptureFixture":
         """Start capturing logs."""
         self.records.clear()
-        buffer = StringIO()
 
-        def capture_sink(message: dict) -> None:
-            self.records.append(message["text"])
-            buffer.write(message["text"])
+        def capture_sink(message: str) -> None:
+            self.records.append(message.rstrip("\n"))
 
         self._handler_id = logger.add(capture_sink, format="{message}", level=0)
         return self
