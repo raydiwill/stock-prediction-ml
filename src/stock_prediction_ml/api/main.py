@@ -43,6 +43,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 import mlflow
 import pandas as pd
@@ -186,6 +187,10 @@ app.add_middleware(
 async def log_requests(request: Request, call_next: Callable) -> Response:
     """Log HTTP request method, path, status code, and latency.
 
+    Adds a unique request_id to the logger context so every log line emitted
+    while handling this request carries the id. With JSON serialization, this
+    becomes a queryable field for request tracing.
+
     Args:
         request: Incoming HTTP request.
         call_next: Next middleware/handler in chain.
@@ -193,17 +198,20 @@ async def log_requests(request: Request, call_next: Callable) -> Response:
     Returns:
         Response: HTTP response from downstream handler.
     """
-    start_time = time.time()
+    request_id = uuid4().hex[:8]
 
-    response = await call_next(request)
+    with logger.contextualize(request_id=request_id):
+        start_time = time.time()
 
-    duration = time.time() - start_time
-    logger.info(
-        f"{request.method} {request.url.path} "
-        f"status={response.status_code} duration={duration:.3f}s"
-    )
+        response = await call_next(request)
 
-    return response
+        duration = time.time() - start_time
+        logger.info(
+            f"{request.method} {request.url.path} "
+            f"status={response.status_code} duration={duration:.3f}s"
+        )
+
+        return response
 
 
 @app.get("/health", response_model=HealthResponse)
